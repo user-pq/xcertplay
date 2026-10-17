@@ -51,6 +51,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 .ci/xingrui/apply_xingrui_patch.py "${RUNNER_TEMP}/DiPlay"
+          python3 .ci/xingrui/apply_xingrui_ui_patch.py "${RUNNER_TEMP}/DiPlay"
 
       - name: Prepare optional standalone authentication
         shell: bash
