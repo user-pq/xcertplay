@@ -52,12 +52,49 @@ jobs:
           set -euo pipefail
           python3 .ci/xingrui/apply_xingrui_patch.py "${RUNNER_TEMP}/DiPlay"
 
-      - name: Build source-only debug APK
+      - name: Prepare optional standalone authentication
+        shell: bash
+        env:
+          DIPLAY_IDENTITY_PK8_BASE64: ${{ secrets.DIPLAY_IDENTITY_PK8_BASE64 }}
+          DIPLAY_CERTIFICATE_P7B_BASE64: ${{ secrets.DIPLAY_CERTIFICATE_P7B_BASE64 }}
+        run: |
+          set -euo pipefail
+          identity_present=false
+          certificate_present=false
+          [[ -n "${DIPLAY_IDENTITY_PK8_BASE64:-}" ]] && identity_present=true
+          [[ -n "${DIPLAY_CERTIFICATE_P7B_BASE64:-}" ]] && certificate_present=true
+
+          if [[ "${identity_present}" != "${certificate_present}" ]]; then
+            echo 'Both MFi authentication secrets must be configured together.' >&2
+            exit 1
+          fi
+
+          if [[ "${identity_present}" == true ]]; then
+            auth_dir="${RUNNER_TEMP}/diplay-auth"
+            mkdir -p "${auth_dir}/offline-mfi"
+            printf '%s' "${DIPLAY_IDENTITY_PK8_BASE64}" | base64 --decode > "${auth_dir}/offline-mfi/identity.pk8"
+            printf '%s' "${DIPLAY_CERTIFICATE_P7B_BASE64}" | base64 --decode > "${auth_dir}/offline-mfi/certificate.p7b"
+            chmod 600 "${auth_dir}/offline-mfi/identity.pk8" "${auth_dir}/offline-mfi/certificate.p7b"
+            test -s "${auth_dir}/offline-mfi/identity.pk8"
+            test -s "${auth_dir}/offline-mfi/certificate.p7b"
+            echo "DIPLAY_STANDALONE=true" >> "${GITHUB_ENV}"
+            echo "DIPLAY_AUTH_ASSETS_DIR=${auth_dir}" >> "${GITHUB_ENV}"
+            echo 'Standalone authentication assets prepared from repository secrets.'
+          else
+            echo "DIPLAY_STANDALONE=false" >> "${GITHUB_ENV}"
+            echo 'Authentication secrets are not configured; building source-only debug APK.'
+          fi
+
+      - name: Build Xingrui APK
         shell: bash
         working-directory: ${{ runner.temp }}/DiPlay
         run: |
           set -euo pipefail
-          ./gradlew :mobile:assembleDebug --stacktrace
+          if [[ "${DIPLAY_STANDALONE}" == true ]]; then
+            ./gradlew :mobile:assembleStandaloneDebug --stacktrace
+          else
+            ./gradlew :mobile:assembleDebug --stacktrace
+          fi
 
       - name: Collect APK and checksum
         shell: bash
@@ -66,8 +103,20 @@ jobs:
           mkdir -p out
           apk="$(find "${RUNNER_TEMP}/DiPlay/mobile/build/outputs/apk/debug" -maxdepth 1 -type f -name '*.apk' -print -quit)"
           test -n "${apk}"
-          cp "${apk}" out/DiPlay-Xingrui-E02-Wireless-v0.2.20-debug.apk
-          sha256sum out/DiPlay-Xingrui-E02-Wireless-v0.2.20-debug.apk | tee out/SHA256SUMS.txt
+          if [[ "${DIPLAY_STANDALONE}" == true ]]; then
+            name='DiPlay-Xingrui-E02-Wireless-v0.2.20-standalone-debug.apk'
+            unzip -l "${apk}" | grep -q 'assets/offline-mfi/identity.pk8'
+            unzip -l "${apk}" | grep -q 'assets/offline-mfi/certificate.p7b'
+          else
+            name='DiPlay-Xingrui-E02-Wireless-v0.2.20-debug.apk'
+          fi
+          cp "${apk}" "out/${name}"
+          sha256sum "out/${name}" | tee out/SHA256SUMS.txt
+
+      - name: Remove temporary authentication files
+        if: always()
+        shell: bash
+        run: rm -rf "${RUNNER_TEMP}/diplay-auth"
 
       - name: Upload Xingrui APK
         uses: actions/upload-artifact@v4
