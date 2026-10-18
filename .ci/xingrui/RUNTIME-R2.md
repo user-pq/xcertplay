@@ -4,7 +4,9 @@ Pinned upstream remains DiPlay 0.2.20 / 3c95c936859e8a9153f0040caf2337adddb9e3e4
 
 - Android 9 Car.createCar(Context, ServiceConnection[, Handler]) and asynchronous connect;
   property reads off the UI thread; status checked, read failures logged with causes, no fake values.
-  CURRENT_GEAR is preferred over GEAR_SELECTION. Declaring car permissions does not grant them.
+  CURRENT_GEAR is preferred over GEAR_SELECTION. CAR_SPEED runtime authorization is
+  requested when the system marks it dangerous. Android 9 CAR_ENGINE_DETAILED is signature/system;
+  declaring it does not grant third-party RPM access. Denied values remain unavailable.
 - A2DP_SINK (11) release for the selected iPhone after a verified wireless session
   renders its main-screen first frame (two-second delay, session/generation checked).
   PCM playback progress on a non-Bluetooth AudioTrack is recorded as confirmation, not
