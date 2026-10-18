@@ -64,6 +64,8 @@ def main():
                     CarPlayBackgroundSession.active = false''')
     replace(h, '                Log.i(ClusterMapPresentation.TAG, "cluster stream active=$active")', '''                Log.i("XingruiCluster", "stream=111 active=$active presentation=${clusterPresentation != null} surfaceValid=${clusterSurface?.isValid}")
                 Log.i(ClusterMapPresentation.TAG, "cluster stream active=$active")''')
+    presentation=c/'ClusterMapPresentation.kt'
+    replace(presentation, '    // The placeholder until the map arrives: a small spinner.', '    private var xingruiDim: XingruiDimProjection? = null\n\n    override fun onStart() {\n        super.onStart()\n        if (XingruiClusterProbe.isCandidate(display) && AirPlayPersistence.loadClusterMapEnabled(context)) {\n            xingruiDim = XingruiDimProjection(context, display.displayId).also { it.start() }\n        }\n    }\n\n    override fun onStop() {\n        xingruiDim?.close()\n        xingruiDim = null\n        super.onStop()\n    }\n\n    // The placeholder until the map arrives: a small spinner.')
     media=r/'shared/src/main/java/com/shilapi/xcertplay/media/AndroidMediaSink.kt'
     replace(media, '        val queuedFrames = playbackHeadFrames?.let { (totalWrittenFrames - it).coerceAtLeast(0L) }', '''        val route = currentTrack?.routedDevice
         if (!force && mappedChannel == AudioChannel.MEDIA && playbackStarted &&
@@ -81,6 +83,8 @@ def main():
     replace(manifest, '    <application>', '''    <uses-permission android:name="android.car.permission.CAR_SPEED" />
     <uses-permission android:name="android.car.permission.CAR_POWERTRAIN" />
     <uses-permission android:name="android.car.permission.CAR_ENGINE_DETAILED" />
+    <uses-permission android:name="android.cevt.dimsupportservice.permission.DIM_MESSAGING" />
+    <uses-permission android:name="ecarx.oem.permission.OPENAPI_NAVI_PERMISSION" />
     <application>''')
     # Permission declarations do not imply that the E02 grants them to this app.
     replace(manifest, '    <application>', '''    <application>

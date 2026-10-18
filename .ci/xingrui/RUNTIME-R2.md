@@ -29,6 +29,12 @@ A new private local test signer is retained separately for future updates.
 
 Presentation + a Surface on DashboardMapDisplay is NOT proof of a physical dashboard mode
 change. The test showed OEM instruments unchanged and concurrent Amap Presentation.
+A runtime-gated DimInteraction.setPresentationToDimSwitch(int,String,String,boolean)
+request is added only while the Ultra Presentation is shown; close sends false if true
+was dispatched. Contract source is jiopia/DiPlay-ECARX at
+7f78343642fe695bb56906c3d8761c1c68bae7ce, for a DIFFERENT vehicle (Lynk DCY11),
+so class/method/permissions and physical effect are explicitly unverified on E02.
+Missing/denied APIs stop retries. A void return is logged as a request, never success.
 No undocumented ECARX property is written. Physical IPK projection activation is still unresolved;
 fixing Car reflection does not itself switch the dashboard or replace native gauges/telltales.
 
