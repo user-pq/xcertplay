@@ -12,7 +12,7 @@ def replace(p, old, new):
 def main():
     r=Path(sys.argv[1]); c=r/'common/src/main/java/com/shilapi/xcertplay'
     a=c/'DiPlayActivity.kt'; h=c/'CarPlayHostActivity.kt'
-    replace(a, '        right.addView(homeButton(getString(R.string.connect_with_usb), false) { connect(false) }, matchButton(height = if (compact) 54 else 68))\n        if (!compact) right.addView(label(getString(R.string.plug_your_iphone_into_a_usb_data_port_allow_carplay_when_y), 14, MUTED).apply { gravity = Gravity.CENTER; setPadding(dp(8), dp(10), dp(8), dp(24)) })\n', '')
+    replace(a, '        right.addView(homeButton(getString(R.string.connect_with_usb), false) { connect(false) }, matchButton(height = if (compact) 54 else 68))\n        if (!compact) right.addView(label(getString(R.string.plug_your_iphone_into_a_usb_data_port_allow_carplay_when_y), 14, MUTED).apply { gravity = Gravity.CENTER; setPadding(dp(8), dp(10), dp(8), dp(24)) })\n        else right.addView(space(16))\n', '')
     # The simplified settings removed this toggle while upstream defaults auto_enable to false.
     replace(a, '            card.addView(button(chooseIphoneTitle(), false) { choosePhone() }, matchButton(10, 58))', '''            toggle(card, "自动开启车机热点", "打开应用时开启已保存的车机热点。",
                 CarHotspotSettings.enabled(this)) { enabled ->
