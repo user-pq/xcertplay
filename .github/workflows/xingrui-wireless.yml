@@ -1,4 +1,4 @@
-name: Xingrui Wireless APK
+name: Xingrui DiPlay APK
 
 on:
   push:
@@ -53,6 +53,8 @@ jobs:
           python3 .ci/xingrui/apply_xingrui_patch.py "${RUNNER_TEMP}/DiPlay"
           python3 .ci/xingrui/apply_xingrui_ui_patch.py "${RUNNER_TEMP}/DiPlay"
           python3 .ci/xingrui/apply_xingrui_brand_patch.py "${RUNNER_TEMP}/DiPlay"
+          python3 .ci/xingrui/apply_xingrui_product_patch.py "${RUNNER_TEMP}/DiPlay"
+          python3 .ci/xingrui/apply_xingrui_wheel_learning_patch.py "${RUNNER_TEMP}/DiPlay"
 
       - name: Prepare optional standalone authentication
         shell: bash
@@ -65,12 +67,10 @@ jobs:
           certificate_present=false
           [[ -n "${DIPLAY_IDENTITY_PK8_BASE64:-}" ]] && identity_present=true
           [[ -n "${DIPLAY_CERTIFICATE_P7B_BASE64:-}" ]] && certificate_present=true
-
           if [[ "${identity_present}" != "${certificate_present}" ]]; then
             echo 'Both MFi authentication secrets must be configured together.' >&2
             exit 1
           fi
-
           if [[ "${identity_present}" == true ]]; then
             auth_dir="${RUNNER_TEMP}/diplay-auth"
             mkdir -p "${auth_dir}/offline-mfi"
@@ -81,10 +81,8 @@ jobs:
             test -s "${auth_dir}/offline-mfi/certificate.p7b"
             echo "DIPLAY_STANDALONE=true" >> "${GITHUB_ENV}"
             echo "DIPLAY_AUTH_ASSETS_DIR=${auth_dir}" >> "${GITHUB_ENV}"
-            echo 'Standalone authentication assets prepared from repository secrets.'
           else
             echo "DIPLAY_STANDALONE=false" >> "${GITHUB_ENV}"
-            echo 'Authentication secrets are not configured; building source-only debug APK.'
           fi
 
       - name: Build Xingrui APK
@@ -106,11 +104,11 @@ jobs:
           apk="$(find "${RUNNER_TEMP}/DiPlay/mobile/build/outputs/apk/debug" -maxdepth 1 -type f -name '*.apk' -print -quit)"
           test -n "${apk}"
           if [[ "${DIPLAY_STANDALONE}" == true ]]; then
-            name='Car-Xingrui-E02-Wireless-v0.2.20-standalone-debug.apk'
+            name='diplay-Xingrui-E02-v0.2.20-standalone-debug.apk'
             unzip -l "${apk}" | grep -q 'assets/offline-mfi/identity.pk8'
             unzip -l "${apk}" | grep -q 'assets/offline-mfi/certificate.p7b'
           else
-            name='Car-Xingrui-E02-Wireless-v0.2.20-debug.apk'
+            name='diplay-Xingrui-E02-v0.2.20-debug.apk'
           fi
           cp "${apk}" "out/${name}"
           sha256sum "out/${name}" | tee out/SHA256SUMS.txt
@@ -123,7 +121,7 @@ jobs:
       - name: Upload Xingrui APK
         uses: actions/upload-artifact@v4
         with:
-          name: xingrui-wireless-apk
+          name: diplay-xingrui-apk
           path: out/*
           if-no-files-found: error
           retention-days: 7
