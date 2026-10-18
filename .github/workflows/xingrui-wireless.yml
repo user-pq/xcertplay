@@ -20,6 +20,11 @@ jobs:
       - name: Check out build payload
         uses: actions/checkout@v4
 
+      - name: Verify detached log collector
+        run: |
+          sh -n .ci/xingrui/collect_xingrui_test.sh
+          python3 .ci/xingrui/test_collector.py
+
       - name: Set up JDK 25
         uses: actions/setup-java@v4
         with:
@@ -73,6 +78,7 @@ jobs:
           python3 .ci/xingrui/apply_xingrui_brand_patch.py "${RUNNER_TEMP}/DiPlay"
           python3 .ci/xingrui/apply_xingrui_product_patch.py "${RUNNER_TEMP}/DiPlay"
           python3 .ci/xingrui/apply_xingrui_wheel_learning_patch.py "${RUNNER_TEMP}/DiPlay"
+          python3 .ci/xingrui/apply_xingrui_runtime_patch.py "${RUNNER_TEMP}/DiPlay"
 
       - name: Prepare optional standalone authentication
         shell: bash
@@ -109,7 +115,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "${DIPLAY_STANDALONE}" == true ]]; then
-            ./gradlew :mobile:assembleStandaloneDebug --stacktrace
+            ./gradlew :mobile:assembleDebug --stacktrace
           else
             ./gradlew :mobile:assembleDebug --stacktrace
           fi
@@ -119,7 +125,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p out
-          apk="$(find "${RUNNER_TEMP}/DiPlay/mobile/build/outputs/apk/debug" -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          apk="$(find "${RUNNER_TEMP}/DiPlay/mobile/build/outputs/apk" -type f -name '*.apk' -print -quit)"
           test -n "${apk}"
           if [[ "${DIPLAY_STANDALONE}" == true ]]; then
             name='diplay-Xingrui-E02-v0.2.20-standalone-debug.apk'
@@ -129,6 +135,7 @@ jobs:
             name='diplay-Xingrui-E02-v0.2.20-debug.apk'
           fi
           cp "${apk}" "out/${name}"
+          cp .ci/xingrui/collect_xingrui_test.sh .ci/xingrui/collect_xingrui_test.ps1 out/
           sha256sum "out/${name}" | tee out/SHA256SUMS.txt
 
       - name: Remove temporary authentication files

@@ -9,6 +9,7 @@ import android.view.Display
 /** Runtime-only Xingrui cluster probe using Android's public display API. */
 internal object XingruiClusterProbe {
     private const val TAG = "XingruiCluster"
+    private val lastReports = java.util.concurrent.ConcurrentHashMap<Int, Pair<String, Long>>()
 
     fun find(context: Context, supplied: List<Display>? = null): Display? {
         val manager = context.getSystemService(DisplayManager::class.java) ?: return null
@@ -16,8 +17,14 @@ internal object XingruiClusterProbe {
         return displays
             .map { it to candidate(it) }
             .onEach { (display, c) ->
-                Log.i(TAG, "candidate id=${display.displayId} name=${display.name} ${c.width}x${c.height} " +
-                    "flags=${display.flags} valid=${display.isValid} score=${XingruiDisplayScorer.score(c)}")
+                val line = "candidate id=${display.displayId} name=${display.name} ${c.width}x${c.height} " +
+                    "flags=${display.flags} valid=${display.isValid} score=${XingruiDisplayScorer.score(c)}"
+                val now = android.os.SystemClock.uptimeMillis()
+                val previous = lastReports[display.displayId]
+                if (previous == null || previous.first != line || now - previous.second >= 10_000L) {
+                    lastReports[display.displayId] = line to now
+                    Log.i(TAG, line)
+                }
             }
             .filter { (_, c) -> XingruiDisplayScorer.isLikelyCluster(c) }
             .maxByOrNull { (_, c) -> XingruiDisplayScorer.score(c) }

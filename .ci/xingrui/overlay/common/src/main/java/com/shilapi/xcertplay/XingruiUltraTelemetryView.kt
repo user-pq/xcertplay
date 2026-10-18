@@ -24,7 +24,10 @@ internal class XingruiUltraTelemetryView(context: Context) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = android.graphics.Typeface.DEFAULT_BOLD }
     private val handler = Handler(Looper.getMainLooper())
-    private val reader = XingruiCarPropertyReader(context.applicationContext)
+    private var reader: XingruiCarPropertyReader? = null
+    private var worker: android.os.HandlerThread? = null
+    private var io: Handler? = null
+    private var generation = 0
 
     private var speedKmh: Int? = null
     private var rpm: Int? = null
@@ -32,24 +35,43 @@ internal class XingruiUltraTelemetryView(context: Context) : View(context) {
 
     private val poll = object : Runnable {
         override fun run() {
-            val speed = reader.float("PERF_VEHICLE_SPEED")
-            speedKmh = speed?.takeIf { it.isFinite() && it >= 0f }?.let { (it * 3.6f).roundToInt() }
-            rpm = reader.float("ENGINE_RPM")?.takeIf { it.isFinite() && it >= 0f }?.roundToInt()
-            gear = reader.int("GEAR_SELECTION")?.let(reader::gearName)
-            invalidate()
-            if (isAttachedToWindow) handler.postDelayed(this, 250L)
+            val ticket = generation
+            val source = reader ?: return
+            io?.post {
+                val speed = source.float("PERF_VEHICLE_SPEED")
+                    ?.takeIf { it.isFinite() && it >= 0f }?.let { (it * 3.6f).roundToInt() }
+                val engine = source.float("ENGINE_RPM")?.takeIf { it.isFinite() && it >= 0f }?.roundToInt()
+                val selected = (source.int("CURRENT_GEAR") ?: source.int("GEAR_SELECTION"))?.let(source::gearName)
+                handler.post {
+                    if (generation != ticket || !isAttachedToWindow) return@post
+                    speedKmh = speed
+                    rpm = engine
+                    gear = selected
+                    invalidate()
+                    handler.postDelayed(this, 250L)
+                }
+            }
         }
     }
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        handler.removeCallbacks(poll)
-        poll.run()
+        generation++
+        reader = XingruiCarPropertyReader(context.applicationContext)
+        worker = android.os.HandlerThread("xingrui-vhal").also { it.start() }
+        io = Handler(worker!!.looper)
+        handler.post(poll)
     }
 
     override fun onDetachedFromWindow() {
+        generation++
         handler.removeCallbacks(poll)
-        reader.close()
+        reader?.close()
+        reader = null
+        io?.removeCallbacksAndMessages(null)
+        worker?.quitSafely()
+        io = null
+        worker = null
         super.onDetachedFromWindow()
     }
 
@@ -112,75 +134,111 @@ internal class XingruiUltraTelemetryView(context: Context) : View(context) {
     }
 }
 
-private class XingruiCarPropertyReader(context: Context) {
-    private val car: Any?
-    private val manager: Any?
-    private val getProperty: java.lang.reflect.Method?
-    private val vehiclePropertyIds: Class<*>?
-    private val vehicleGear: Class<*>?
+private class XingruiCarPropertyReader(private val context: Context) {
+    @Volatile private var car: Any? = null
+    @Volatile private var manager: Any? = null
+    @Volatile private var getter: java.lang.reflect.Method? = null
+    @Volatile private var closed = false
+    private val reported = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private var step = "load Car"
+    private val connection = object : android.content.ServiceConnection {
+        override fun onServiceConnected(name: android.content.ComponentName, binder: android.os.IBinder) {
+            if (!closed) bindManager()
+        }
+        override fun onServiceDisconnected(name: android.content.ComponentName) {
+            manager = null
+            getter = null
+            android.util.Log.w(TAG, "car service disconnected; values unavailable")
+        }
+    }
 
     init {
-        var c: Any? = null
-        var m: Any? = null
-        var getter: java.lang.reflect.Method? = null
-        var ids: Class<*>? = null
-        var gears: Class<*>? = null
-        runCatching {
-            val carClass = Class.forName("android.car.Car")
-            c = carClass.getMethod("createCar", Context::class.java).invoke(null, context)
-            val service = runCatching { carClass.getField("PROPERTY_SERVICE").get(null) as String }.getOrDefault("property")
-            m = c?.javaClass?.getMethod("getCarManager", String::class.java)?.invoke(c, service)
-            getter = m?.javaClass?.methods?.firstOrNull {
-                it.name == "getProperty" && it.parameterTypes.size == 3 && it.parameterTypes[0] == Class::class.java
+        try {
+            val type = Class.forName("android.car.Car")
+            // Android 9 uses createCar(Context, ServiceConnection[, Handler]) + connect().
+            val legacy = type.methods.firstOrNull { it.name == "createCar" &&
+                it.parameterTypes.contentEquals(arrayOf(Context::class.java,
+                    android.content.ServiceConnection::class.java, Handler::class.java)) }
+            val legacy2 = type.methods.firstOrNull { it.name == "createCar" &&
+                it.parameterTypes.contentEquals(arrayOf(Context::class.java,
+                    android.content.ServiceConnection::class.java)) }
+            step = "createCar"
+            car = when {
+                legacy != null -> legacy.invoke(null, context, connection, Handler(Looper.getMainLooper()))
+                legacy2 != null -> legacy2.invoke(null, context, connection)
+                else -> type.getMethod("createCar", Context::class.java).invoke(null, context)
             }
-            ids = Class.forName("android.car.VehiclePropertyIds")
-            gears = Class.forName("android.car.VehicleGear")
-        }.onFailure { android.util.Log.i(TAG, "VHAL reflection unavailable: ${it.javaClass.simpleName}") }
-        car = c
-        manager = m
-        getProperty = getter
-        vehiclePropertyIds = ids
-        vehicleGear = gears
+            checkNotNull(car) { "createCar returned null" }
+            if (legacy != null || legacy2 != null) {
+                step = "connect"
+                type.getMethod("connect").invoke(car)
+                android.util.Log.i(TAG, "legacy car service connection requested")
+            } else bindManager()
+        } catch (error: Throwable) { failure(step, error) }
     }
 
-    fun float(name: String): Float? = value(name, java.lang.Float::class.java)?.let {
-        when (it) {
-            is Number -> it.toFloat()
-            else -> null
+    private fun bindManager() {
+        try {
+            val current = car ?: return
+            val m = current.javaClass.getMethod("getCarManager", String::class.java).invoke(current, "property")
+                ?: error("property service unavailable")
+            val method = m.javaClass.getMethod("getProperty", Class::class.java,
+                Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
+            if (!closed) {
+                getter = method
+                manager = m
+                android.util.Log.i(TAG, "CarPropertyManager ready")
+            }
+        } catch (error: Throwable) { failure("getCarManager/getProperty", error) }
+    }
+
+    fun float(name: String): Float? = (value(name, java.lang.Float::class.java) as? Number)?.toFloat()
+    fun int(name: String): Int? = (value(name, java.lang.Integer::class.java) as? Number)?.toInt()
+
+    private fun value(name: String, klass: Class<*>): Any? {
+        if (closed) return null
+        val target = manager ?: return null
+        val method = getter ?: return null
+        try {
+            val id = IDS[name] ?: return null
+            val property = method.invoke(target, klass, id, 0) ?: return null
+            val status = property.javaClass.getMethod("getStatus").invoke(property) as Int
+            if (status != 0) {
+                if (reported.add("$name/status=$status")) android.util.Log.w(TAG, "$name unavailable status=$status")
+                return null
+            }
+            val result = property.javaClass.getMethod("getValue").invoke(property)
+            if (reported.add("$name/read")) android.util.Log.i(TAG, "$name first read OK value=$result")
+            return result
+        } catch (error: Throwable) { failure(name, error); return null }
+    }
+
+    private fun failure(stage: String, error: Throwable) {
+        val cause = (error as? java.lang.reflect.InvocationTargetException)?.targetException ?: error
+        if (reported.add("$stage/${cause.javaClass.name}")) {
+            android.util.Log.w(TAG, "stage=$stage failed ${cause.javaClass.simpleName}: ${cause.message}", cause)
         }
     }
 
-    fun int(name: String): Int? = value(name, java.lang.Integer::class.java)?.let {
-        when (it) {
-            is Number -> it.toInt()
-            else -> null
-        }
-    }
-
-    private fun value(name: String, klass: Class<*>): Any? = runCatching {
-        val id = vehiclePropertyIds?.getField(name)?.getInt(null) ?: return null
-        val property = getProperty?.invoke(manager, klass, id, 0) ?: return null
-        property.javaClass.getMethod("getValue").invoke(property)
-    }.onFailure {
-        if (it is SecurityException || it.cause is SecurityException) {
-            android.util.Log.d(TAG, "$name denied by VHAL permissions")
-        }
-    }.getOrNull()
-
-    fun gearName(value: Int): String? {
-        val names = listOf(
-            "GEAR_PARK" to "P", "GEAR_REVERSE" to "R", "GEAR_NEUTRAL" to "N", "GEAR_DRIVE" to "D",
-            "GEAR_1" to "1", "GEAR_2" to "2", "GEAR_3" to "3", "GEAR_4" to "4", "GEAR_5" to "5",
-            "GEAR_6" to "6", "GEAR_7" to "7", "GEAR_8" to "8", "GEAR_9" to "9",
-        )
-        return names.firstOrNull { (field, _) ->
-            runCatching { vehicleGear?.getField(field)?.getInt(null) == value }.getOrDefault(false)
-        }?.second
+    // Standard AAOS VehicleGear bit values only. Vendor codes are never interpreted here.
+    fun gearName(value: Int): String? = when (value) {
+        1 -> "N"; 2 -> "R"; 4 -> "P"; 8 -> "D"
+        16 -> "1"; 32 -> "2"; 64 -> "3"; 128 -> "4"; 256 -> "5"
+        512 -> "6"; 1024 -> "7"; 2048 -> "8"; 4096 -> "9"
+        else -> null
     }
 
     fun close() {
+        closed = true
+        manager = null
+        getter = null
         runCatching { car?.javaClass?.getMethod("disconnect")?.invoke(car) }
+        car = null
     }
 
-    companion object { private const val TAG = "XingruiVHAL" }
+    companion object {
+        private const val TAG = "XingruiVHAL"
+        private val IDS = mapOf("PERF_VEHICLE_SPEED" to 0x11600207, "ENGINE_RPM" to 0x11600305,
+            "GEAR_SELECTION" to 0x11400400, "CURRENT_GEAR" to 0x11400401)
+    }
 }
