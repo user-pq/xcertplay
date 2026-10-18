@@ -29,6 +29,10 @@ internal object XingruiMediaCenter {
         if (active) bridge?.requestOwnership()
     } }
 
+    fun metadataChanged(controller: CarPlayController) { main.post {
+        if (bridge?.controller === controller) bridge?.publishPlayback()
+    } }
+
     private class Bridge(val app: Context, val controller: CarPlayController) {
         @Volatile private var closed = false
         private var api: Any? = null
@@ -36,6 +40,9 @@ internal object XingruiMediaCenter {
         private var token: Any? = null
         private var music: Any? = null
         private var callback: Any? = null
+        private var playback: Any? = null
+        private var playbackClass: Class<*>? = null
+        private var sourceType = 6 // SOURCE_TYPE_ONLINE; never Bluetooth or USB
         private var wanted = false
         private var claimed = false
 
@@ -76,6 +83,25 @@ internal object XingruiMediaCenter {
             if (token != null || closed) return
             try {
                 val client = loader.loadClass("com.ecarx.sdk.mediacenter.MusicClient") as Class<Any>
+                val info = loader.loadClass("com.ecarx.sdk.mediacenter.MusicPlaybackInfo") as Class<Any>
+                playbackClass = info
+                sourceType = runCatching { info.getField("SOURCE_TYPE_ONLINE").getInt(null) }.getOrDefault(6)
+                playback = ProxyBuilder.forClass(info).parentClassLoader(loader)
+                    .dexCache(app.getDir("xingrui-media-dex", Context.MODE_PRIVATE))
+                    .handler { proxy, method, args ->
+                        val current = controller.nowPlayingSnapshot()
+                        when (method.name) {
+                            "getTitle" -> current.title ?: ""
+                            "getArtist" -> current.artist ?: ""
+                            "getAlbum" -> current.album ?: ""
+                            "getDuration" -> current.durationMillis ?: 0L
+                            "getPlaybackStatus" -> if (current.playing) 1 else 0
+                            "getSourceType" -> sourceType
+                            "getPackageName" -> app.packageName
+                            "getAppName" -> "DiPlay"
+                            else -> ProxyBuilder.callSuper(proxy, method, *(args ?: emptyArray()))
+                        }
+                    }.build()
                 music = ProxyBuilder.forClass(client).parentClassLoader(loader)
                     .dexCache(app.getDir("xingrui-media-dex", Context.MODE_PRIVATE))
                     .handler { proxy, method, args ->
@@ -95,14 +121,35 @@ internal object XingruiMediaCenter {
                             if (method.name == "onMediaCenterFocusChanged") {
                                 Log.i(TAG, "OEM media focus=${args?.firstOrNull()}")
                             }
-                            ProxyBuilder.callSuper(proxy, method, *(args ?: emptyArray()))
+                            when (method.name) {
+                                "getMusicPlaybackInfo" -> playback
+                                "getMediaSourceTypeList" -> intArrayOf(sourceType)
+                                "getCurrentSourceType" -> sourceType
+                                "getCurrentProgress" -> controller.nowPlayingSnapshot().elapsedMillis ?: 0L
+                                else -> ProxyBuilder.callSuper(proxy, method, *(args ?: emptyArray()))
+                            }
                         }
                     }.build()
                 token = apiClass!!.getMethod("registerMusic", String::class.java, client)
                     .invoke(api, app.packageName, music)
                 Log.i(TAG, "music registration tokenPresent=${token != null}")
+                if (token != null) {
+                    apiClass!!.getMethod("updateMediaSourceTypeList", Any::class.java, IntArray::class.java)
+                        .invoke(api, token, intArrayOf(sourceType))
+                    apiClass!!.getMethod("updateCurrentSourceType", Any::class.java, Int::class.javaPrimitiveType)
+                        .invoke(api, token, sourceType)
+                    publishPlayback()
+                }
                 if (wanted) requestOwnership()
             } catch (error: Throwable) { Log.w(TAG, "music registration failed", error.cause ?: error) }
+        }
+
+        fun publishPlayback() {
+            if (closed || token == null || playback == null) return
+            try {
+                apiClass!!.getMethod("updateMusicPlaybackState", Any::class.java, playbackClass!!)
+                    .invoke(api, token, playback)
+            } catch (error: Exception) { Log.w(TAG, "playback update failed", error.cause ?: error) }
         }
 
         fun requestOwnership() {
@@ -125,6 +172,7 @@ internal object XingruiMediaCenter {
             runCatching { apiClass?.getMethod("release")?.invoke(api) }
             token = null
             music = null
+            playback = null
             callback = null
             Log.i(TAG, "music source released")
         }

@@ -10,6 +10,7 @@ def main():
     replace(root/'common/build.gradle.kts', 'dependencies {', 'dependencies {\n    implementation("com.linkedin.dexmaker:dexmaker:2.28.3")')
     replace(m, '        GeelyWheelKeys.start(context)', '        GeelyWheelKeys.start(context)\n        XingruiMediaCenter.attach(context, next)')
     replace(m, '        GeelyWheelKeys.stop()', '        GeelyWheelKeys.stop()\n        XingruiMediaCenter.detach(expected)')
+    replace(m, '                // Resolve retained state at delivery: a queued callback cannot roll a replay back.', '                XingruiMediaCenter.metadataChanged(expected)\n                // Resolve retained state at delivery: a queued callback cannot roll a replay back.')
     replace(m, '    fun onMediaAudioChanged(active: Boolean) {', '    fun onMediaAudioChanged(active: Boolean) {\n        XingruiMediaCenter.audioActive(active)')
     replace(a, '            toggle(card, "自动开启车机热点",', '''            toggle(card, "开机自动启动", "车机完整开机后打开 DiPlay，再按自动连接设置连接 iPhone。",
                 AirPlayPersistence.loadAutoStartOnBoot(this)) { enabled ->
