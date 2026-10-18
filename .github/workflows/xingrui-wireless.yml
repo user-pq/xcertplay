@@ -35,6 +35,24 @@ jobs:
             build-tools;36.0.0
             ndk;28.2.13676358
 
+      - name: Export Android signing tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p signing-tools/lib
+          cp "${ANDROID_HOME}/build-tools/36.0.0/apksigner" signing-tools/
+          cp "${ANDROID_HOME}/build-tools/36.0.0/zipalign" signing-tools/
+          cp "${ANDROID_HOME}/build-tools/36.0.0/lib/apksigner.jar" signing-tools/lib/
+          chmod +x signing-tools/apksigner signing-tools/zipalign
+
+      - name: Upload Android signing tools
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-signing-tools-36
+          path: signing-tools/**
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
