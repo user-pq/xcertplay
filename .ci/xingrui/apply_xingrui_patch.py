@@ -21,17 +21,8 @@ def replace_once(path: Path, old: str, new: str, label: str) -> None:
     print(f"[ok] {label}")
 
 
-def regex_once(path: Path, pattern: str, replacement: str, label: str, flags: int = 0) -> None:
-    text = path.read_text(encoding="utf-8")
-    new_text, count = re.subn(pattern, replacement, text, count=1, flags=flags)
-    if count != 1:
-        raise SystemExit(f"[FAIL] {label}: expected exactly one match in {path}, found {count}")
-    path.write_text(new_text, encoding="utf-8")
-    print(f"[ok] {label}")
-
-
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Apply 2023 Geely Xingrui E02 wireless/cluster adaptation")
+    ap = argparse.ArgumentParser(description="Apply 2023 Geely Xingrui E02 cluster/wheel adaptation")
     ap.add_argument("repo", nargs="?", default=".", help="DiPlay repository root")
     args = ap.parse_args()
     repo = Path(args.repo).resolve()
@@ -39,8 +30,7 @@ def main() -> None:
 
     host = repo / "common/src/main/java/com/shilapi/xcertplay/CarPlayHostActivity.kt"
     presentation = repo / "common/src/main/java/com/shilapi/xcertplay/ClusterMapPresentation.kt"
-    geely_wheel = repo / "common/src/main/java/com/shilapi/xcertplay/GeelyWheelKeys.kt"
-    if not host.exists() or not presentation.exists() or not geely_wheel.exists():
+    if not host.exists() or not presentation.exists():
         raise SystemExit("[FAIL] Not a supported DiPlay v0.2.20 tree")
 
     overlay = here / "overlay/common/src/main/java/com/shilapi/xcertplay"
@@ -49,41 +39,9 @@ def main() -> None:
         shutil.copy2(src, target / src.name)
         print(f"[ok] overlay {src.name}")
 
-    # Wireless-only: never select USB CarPlay transport and never persist wired mode.
-    replace_once(host,
-        "    private var wirelessEnabled = false\n",
-        "    // Xingrui E02 build: wireless CarPlay only.\n    private var wirelessEnabled = true\n",
-        "wireless default")
-    replace_once(host,
-        "        transport = if (wirelessEnabled) CarPlayTransport.WIRELESS else CarPlayTransport.WIRED,\n",
-        "        transport = CarPlayTransport.WIRELESS,\n",
-        "force wireless runtime transport")
-    replace_once(host,
-        "        wirelessEnabled = AirPlayPersistence.loadWirelessEnabled(this)\n",
-        "        // Ignore a legacy wired preference in this dedicated Xingrui build.\n        wirelessEnabled = true\n",
-        "ignore persisted wired mode")
-    regex_once(host,
-        r"        if \(isIphoneUsbAttachment\(intent\)\) \{\n            AirPlayPersistence\.saveWirelessEnabled\(this, false\)\n        \}\n",
-        "        // Xingrui E02 build ignores an attached iPhone as a transport selector.\n",
-        "ignore USB attachment at launch")
+    # IMPORTANT: keep upstream wired + wireless transport behavior intact.
+    # AirPlayPersistence already defaults to wireless, while an attached iPhone may switch to USB.
 
-    regex_once(host,
-        r"    override fun onNewIntent\(intent: Intent\) \{\n        super\.onNewIntent\(intent\)\n        setIntent\(intent\)\n        if \(isIphoneUsbAttachment\(intent\)\) \{.*?\n        \}\n    \}\n",
-        "    override fun onNewIntent(intent: Intent) {\n"
-        "        super.onNewIntent(intent)\n"
-        "        setIntent(intent)\n"
-        "        if (isIphoneUsbAttachment(intent)) {\n"
-        "            appendLog(\"Xingrui wireless-only: ignored iPhone USB attachment\")\n"
-        "        }\n"
-        "    }\n",
-        "prevent USB hot-switch",
-        re.DOTALL)
-    replace_once(host,
-        "        AirPlayPersistence.saveWirelessEnabled(this, wirelessEnabled)\n",
-        "        AirPlayPersistence.saveWirelessEnabled(this, true)\n",
-        "persist wireless-only mode")
-
-    # Auto-enable the cluster path only when Android exposes a convincing secondary Presentation display.
     replace_once(host,
         "    private fun ensureClusterPresentation() {\n",
         "    private fun xingruiClusterProjectionEnabled(): Boolean =\n"
@@ -107,7 +65,6 @@ def main() -> None:
         "        if (xingruiClusterProjectionEnabled()) {\n            clusterSurface?.let { sink?.setSurface(SCREEN_TYPE_ALT, it) }\n",
         "route stream 111 to Xingrui cluster")
 
-    # Keep standard Android media keys. Unknown E02 keys are logged for later refinement.
     replace_once(host,
         "        if (!CarPlayMediaButton.opensSiri(event.keyCode)) return super.dispatchKeyEvent(event)\n",
         "        if (!CarPlayMediaButton.opensSiri(event.keyCode)) {\n"
@@ -116,17 +73,6 @@ def main() -> None:
         "        }\n",
         "log unclaimed Xingrui wheel keys")
 
-    # DiPlay already contains Geely OneOS steering-wheel support for geely_fx11. This dedicated
-    # Xingrui build also attempts the same exported Geely input service on E02; if absent, bindService
-    # simply returns false and standard media-key handling remains available.
-    replace_once(geely_wheel,
-        "        if (!GeelyHeadUnit.detected) return\n",
-        "        if (!GeelyHeadUnit.detected) {\n"
-        "            Log.i(TAG, \"Xingrui build: trying Geely input service despite unmatched product fingerprint\")\n"
-        "        }\n",
-        "attempt Geely wheel service on Xingrui E02")
-
-    # Presentation fallback: keep BYD-specific selection first, then score generic public displays.
     old_fallback = '''                return displays.firstOrNull { display ->\n                    val size = sizeOf(display)\n                    DiLink4ClusterDisplay.accepts(display.name, size.x, size.y)\n                }\n'''
     new_fallback = '''                val byd = displays.firstOrNull { display ->\n                    val size = sizeOf(display)\n                    DiLink4ClusterDisplay.accepts(display.name, size.x, size.y)\n                }\n                return byd ?: XingruiClusterProbe.find(context, displays.toList())\n'''
     replace_once(presentation, old_fallback, new_fallback, "add Xingrui Presentation fallback")
@@ -136,8 +82,7 @@ def main() -> None:
     replace_once(presentation, old_wait, new_wait, "Ultra-inspired cluster waiting screen")
 
     print("\nXingrui patch applied to DiPlay v0.2.20.")
-    print("Build with: ./gradlew :mobile:assembleDebug")
-    print("Note: ordinary source builds intentionally contain no MFi accessory identity.")
+    print("Wired and wireless CarPlay transports are both preserved; wireless remains the default.")
 
 
 if __name__ == "__main__":
