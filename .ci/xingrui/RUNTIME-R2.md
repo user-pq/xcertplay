@@ -5,8 +5,10 @@ Pinned upstream remains DiPlay 0.2.20 / 3c95c936859e8a9153f0040caf2337adddb9e3e4
 - Android 9 Car.createCar(Context, ServiceConnection[, Handler]) and asynchronous connect;
   property reads off the UI thread; status checked, read failures logged with causes, no fake values.
   CURRENT_GEAR is preferred over GEAR_SELECTION. Declaring car permissions does not grant them.
-- A2DP_SINK (11) release for the selected iPhone only after CarPlay local media PCM playback
-  advances on a non-Bluetooth AudioTrack. Reconnection is checked every three seconds until
+- A2DP_SINK (11) release for the selected iPhone after a verified wireless session
+  renders its main-screen first frame (two-second delay, session/generation checked).
+  PCM playback progress on a non-Bluetooth AudioTrack is recorded as confirmation, not
+  a prerequisite: iOS may send no CarPlay PCM while A2DP owns the music route. Reconnection is checked every three seconds until
   the CarPlay session ends. RFCOMM, HFP and the Bluetooth adapter are not disabled.
   Profile API denial is logged. No pairing or connection priority is changed.
 - Confirmed E02 key 305 is consumed by the active CarPlay window and sent as NEXT HID.

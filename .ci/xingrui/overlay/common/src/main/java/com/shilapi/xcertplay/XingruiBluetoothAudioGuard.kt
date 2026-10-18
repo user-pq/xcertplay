@@ -8,7 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 
-/** Release only the selected iPhone's A2DP sink, after local CarPlay PCM playback progresses.
+/** Release only the selected iPhone's A2DP sink, after a verified wireless session renders its first main-screen frame.
  * Never disable the adapter: RFCOMM/iAP2, pairing and other devices remain available. */
 internal class XingruiBluetoothAudioGuard(private val context: Context) {
     private val handler = Handler(Looper.getMainLooper())
@@ -18,7 +18,7 @@ internal class XingruiBluetoothAudioGuard(private val context: Context) {
     private var pending = false
     private var closed = false
     private var failures = mutableSetOf<String>()
-    private val listener = object : BluetoothProfile.ServiceListener {
+    private val listener: BluetoothProfile.ServiceListener = object : BluetoothProfile.ServiceListener {
         override fun onServiceConnected(id: Int, proxy: BluetoothProfile) {
             if (closed) { adapter?.closeProfileProxy(id, proxy); return }
             profile = proxy
@@ -27,7 +27,7 @@ internal class XingruiBluetoothAudioGuard(private val context: Context) {
         }
         override fun onServiceDisconnected(id: Int) { profile = null; pending = false }
     }
-    private val check = object : Runnable {
+    private val check: Runnable = object : Runnable {
         override fun run() {
             if (closed || address == null) return
             val proxy = profile
@@ -49,11 +49,11 @@ internal class XingruiBluetoothAudioGuard(private val context: Context) {
             handler.postDelayed(this, 3000L)
         }
     }
-    fun onVerifiedPlayback(phoneAddress: String?) {
+    fun begin(phoneAddress: String?, evidence: String) {
         handler.post {
             if (closed || phoneAddress == null || address == phoneAddress) return@post
             address = phoneAddress
-            Log.i(TAG, "CarPlay local media playback verified; guarding selected iPhone A2DP")
+            Log.i(TAG, "$evidence; guarding selected iPhone A2DP; PCM output is verified separately")
             handler.post(check)
         }
     }

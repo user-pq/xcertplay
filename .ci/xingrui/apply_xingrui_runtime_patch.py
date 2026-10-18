@@ -55,10 +55,11 @@ def main():
                 if (message.startsWith("XingruiAudioVerified ")) runOnUiThread {
                     if (controllerGeneration == restartGeneration && activeAirPlaySession != null &&
                         wirelessEnabled && !shuttingDown.get()) {
-                        xingruiAudioGuard.onVerifiedPlayback(DiPlayPreferences.phoneAddress(this))
+                        xingruiAudioGuard.begin(DiPlayPreferences.phoneAddress(this), "local media PCM progressed")
                     }
                 }
 ''')
+    replace(h, '                    if (!startupRetryBudget.firstFrame(session, android.os.SystemClock.elapsedRealtime())) return@runOnUiThread', '                    if (!startupRetryBudget.firstFrame(session, android.os.SystemClock.elapsedRealtime())) return@runOnUiThread\n                    // Do not wait for PCM: iOS may not send it while A2DP still owns its music route.\n                    mainHandler.postDelayed({\n                        if (wirelessEnabled && controllerGeneration == restartGeneration &&\n                            activeAirPlaySession === session && sink != null && !shuttingDown.get()) {\n                            xingruiAudioGuard.begin(DiPlayPreferences.phoneAddress(this),\n                                "wireless session and main video verified")\n                        }\n                    }, 2000L)')
     replace(h, '                    activeAirPlaySession = null\n                    CarPlayBackgroundSession.active = false', '''                    xingruiAudioGuard.stop()
                     activeAirPlaySession = null
                     CarPlayBackgroundSession.active = false''')
