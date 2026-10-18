@@ -9,6 +9,10 @@ import java.lang.reflect.Proxy
 /** ECARX IConnectable lifecycle, not merely a successful void call to DIM. */
 internal class XingruiDimProjection(context: Context, private val displayId: Int) {
     private val app = context.applicationContext
+    private val ownerClass = CarPlayHostActivity::class.java.name
+    private var requestEpoch = 0
+    private var retry = 0
+    private val ownerType = 0 // APP_TYPE_DEFAULT, as used by the working E02 reference APK.
     private val thread = HandlerThread("xingrui-dim").apply { start() }
     private val handler = Handler(thread.looper)
     @Volatile private var closed = false
@@ -35,6 +39,7 @@ internal class XingruiDimProjection(context: Context, private val displayId: Int
                 when (method.name) {
                     "onConnected" -> { handler.post { onConnected() }; null }
                     "onDisConnected" -> { handler.post {
+                        requestEpoch++
                         connected = false
                         gate.connection(false)
                         XingruiRuntimeStatus.record("仪表", "DIM 服务已断开")
@@ -73,36 +78,83 @@ internal class XingruiDimProjection(context: Context, private val displayId: Int
     } }
 
     private fun dispatch(show: Boolean) {
-        if (!connected || (show && (closed || !AirPlayPersistence.loadClusterMapEnabled(app)))) return
+        requestEpoch++
+        retry = 0
+        attempt(show, requestEpoch)
+    }
+
+    private fun fieldValue(instance: Any, name: String): Any? {
+        var type: Class<*>? = instance.javaClass
+        while (type != null) {
+            val currentType = type
+            val found = runCatching { currentType.getDeclaredField(name) }.getOrNull()
+            if (found != null) {
+                found.isAccessible = true
+                return found.get(if (java.lang.reflect.Modifier.isStatic(found.modifiers)) null else instance)
+            }
+            type = currentType.superclass
+        }
+        throw NoSuchFieldException("${instance.javaClass.name}.$name")
+    }
+
+    private fun attempt(show: Boolean, epoch: Int) {
+        if (epoch != requestEpoch || !connected || (show && (closed || !AirPlayPersistence.loadClusterMapEnabled(app)))) return
+        val cls = contract ?: return
+        var retryNeeded = false
         try {
-            // The first argument is APP_TYPE, NOT a display ID. Retain the reference app's
-            // APP_TYPE_AMAP contract (1), resolving the named constant when the firmware exposes it.
-            val cls = checkNotNull(contract)
-            val appType = runCatching { cls.getField("APP_TYPE_AMAP").getInt(null) }.getOrDefault(1)
             cls.getMethod("setPresentationToDimSwitch", Int::class.javaPrimitiveType,
                 String::class.java, String::class.java, Boolean::class.javaPrimitiveType)
-                .invoke(dim, appType, "", "", show)
+                .invoke(dim, ownerType, app.packageName, ownerClass, show)
             dispatched = show
+            val navi = runCatching { cls.getMethod("getNaviInteraction").invoke(dim) }.getOrNull()
+            var source = "not requested"
+            if (show && navi != null) {
+                val result = runCatching {
+                    val power = checkNotNull(fieldValue(navi, "mPowerOperation")) { "power service not ready" }
+                    power.javaClass.getMethod("disableScreenProjection", Boolean::class.javaPrimitiveType,
+                        Int::class.javaPrimitiveType).invoke(power, false, 2)
+                    "request dispatched"
+                }
+                source = result.getOrElse { "${it.cause ?: it}" }
+                retryNeeded = result.isFailure
+            }
+            val enabled = runCatching { cls.getMethod("getPresentationToDimSwitch").invoke(dim) }.getOrNull()
             val option = runCatching { cls.getMethod("getShowPresentationOption").invoke(dim) }.getOrNull()
-            Log.i(TAG, "DIM projection dispatched enabled=$show appType=$appType option=$option; physical visibility unconfirmed")
-            XingruiRuntimeStatus.record("仪表", "切换请求已发送 enabled=$show option=$option；实屏结果待确认")
-        } catch (error: Exception) { Log.w(TAG, "DIM projection failed", error.cause ?: error) }
+            val internal = navi?.let { runCatching { fieldValue(it, "isScreenProjection") }.getOrNull() }
+            val property = runCatching {
+                Class.forName("android.os.SystemProperties").getMethod("get", String::class.java, String::class.java)
+                    .invoke(null, "sys.ecarx.navsyncscreen.status", "unknown")
+            }.getOrNull()
+            val message = "请求=$show appType=$ownerType switch=$enabled option=$option navsync=$property internal=$internal source=$source"
+            XingruiRuntimeStatus.record("仪表", "$message；物理画面待实测")
+            Log.i(TAG, message)
+            retryNeeded = retryNeeded || enabled != show || (show && internal == false)
+        } catch (error: Exception) {
+            retryNeeded = true
+            Log.w(TAG, "DIM projection failed", error.cause ?: error)
+            XingruiRuntimeStatus.record("仪表", "切换失败：${error.cause ?: error}")
+        }
+        if (retryNeeded && retry < 3) {
+            retry++
+            handler.postDelayed({ attempt(show, epoch) }, retry * 1500L)
+        }
     }
 
     fun close() {
         if (closed) return
         closed = true
+        requestEpoch++
         handler.post {
             val instance = dim
             if (instance != null) {
                 gate.close()
                 if (dispatched && connected) runCatching {
                     val cls = checkNotNull(contract)
-                    val appType = runCatching { cls.getField("APP_TYPE_AMAP").getInt(null) }.getOrDefault(1)
                     cls.getMethod("setPresentationToDimSwitch", Int::class.javaPrimitiveType,
                         String::class.java, String::class.java, Boolean::class.javaPrimitiveType)
-                        .invoke(instance, appType, "", "", false)
+                        .invoke(instance, ownerType, app.packageName, ownerClass, false)
                     Log.i(TAG, "DIM release dispatched")
+                    XingruiRuntimeStatus.record("仪表", "已释放投屏，请确认原厂仪表恢复")
                 }.onFailure { Log.w(TAG, "DIM release failed", it) }
                 runCatching { connection?.getMethod("unregisterConnectWatcher")?.invoke(instance) }
                 runCatching { connection?.getMethod("disconnect")?.invoke(instance) }

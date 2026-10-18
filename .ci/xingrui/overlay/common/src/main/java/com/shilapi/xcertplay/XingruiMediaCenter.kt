@@ -6,90 +6,151 @@ import android.os.Looper
 import android.view.KeyEvent
 import com.shilapi.xcertplay.airplay.CarPlayMediaButton
 import com.shilapi.xcertplay.orchestration.CarPlayController
+import java.lang.reflect.Modifier
 import java.lang.reflect.Proxy
 
-/** E02 rejected MediaCenter authorization. Use the SDK's own key interception API,
- * with this app's real Context, and respect rejection. No media-license or identity changes. */
+/** One ECARX callback owns learning and playback. Learning does not need an active phone. */
 internal object XingruiMediaCenter {
     private val main = Handler(Looper.getMainLooper())
-    private var bridge: Bridge? = null
-    private var sharedInput: Any? = null
-    fun attach(context: Context, controller: CarPlayController) { main.post {
-        if (bridge?.controller === controller) return@post
-        bridge?.close()
-        bridge = Bridge(context.applicationContext, controller).also { it.start() }
+    @Volatile private var controller: CarPlayController? = null
+    @Volatile private var app: Context? = null
+    private var input: Any? = null
+    private var callback: Any? = null
+    private var contract: Class<*>? = null
+    private var callbackClass: Class<*>? = null
+    private val presses = XingruiWheelPresses()
+    private val learningReleases = mutableSetOf<Int>()
+    private data class Learning(val role: WheelZoomSettings.Role, val cancel: () -> Unit,
+        val refused: (WheelZoomSettings.Role) -> Unit, val done: (WheelKey) -> Unit)
+    @Volatile private var learning: Learning? = null
+    private val timeout = Runnable { cancelLearning() }
+    private val roles = listOf(WheelZoomSettings.Role.MEDIA_NEXT, WheelZoomSettings.Role.MEDIA_PREVIOUS,
+        WheelZoomSettings.Role.MEDIA_PLAY_PAUSE, WheelZoomSettings.Role.SIRI)
+
+    fun attach(context: Context, next: CarPlayController) { main.post {
+        controller = next
+        initialize(context)
+        register()
     } }
-    fun detach(controller: CarPlayController) { main.post {
-        if (bridge?.controller === controller) { bridge?.close(); bridge = null }
+    fun detach(expected: CarPlayController) { main.post {
+        if (controller === expected) { controller = null; presses.clear(); register() }
     } }
+    fun settingsChanged() { main.post { register() } }
     fun audioActive(active: Boolean) = Unit
     fun metadataChanged(controller: CarPlayController) = Unit
 
-    private class Bridge(val app: Context, val controller: CarPlayController) {
-        @Volatile private var closed = false
-        private var input: Any? = null
-        private var callback: Any? = null
-        private var contract: Class<*>? = null
-        private var callbackClass: Class<*>? = null
-        private val presses = XingruiWheelPresses()
-        fun start() {
-            try {
-                val cls = Class.forName("com.ecarx.xui.adaptapi.input.Input")
-                val cb = Class.forName("com.ecarx.xui.adaptapi.input.IKeyCallback")
-                contract = cls
-                callbackClass = cb
-                input = sharedInput ?: checkNotNull(cls.getMethod("create", Context::class.java).invoke(null, app)).also { sharedInput = it }
-                callback = Proxy.newProxyInstance(cb.classLoader, arrayOf(cb)) { proxy, method, args ->
-                    when (method.name) {
-                        "onKeyPressed" -> {
-                            val code = args?.firstOrNull() as? Int
-                            if (code == null || closed) false else presses.down(code) {
-                                val button = buttonFor(code)
-                                val sent = button != null && !inCall(app) &&
-                                    runCatching { controller.sendMediaButton(button) }.getOrDefault(false)
-                                XingruiRuntimeStatus.record("方控", "收到按键 $code，CarPlay 发送=$sent")
-                                sent
-                            }
-                        }
-                        "onKeyReleased" -> {
-                            val code = args?.firstOrNull() as? Int
-                            code != null && presses.up(code)
-                        }
-                        "hashCode" -> System.identityHashCode(proxy)
-                        "equals" -> proxy === args?.firstOrNull()
-                        "toString" -> "XingruiInputCallback"
-                        else -> null
-                    }
+    fun learn(context: Context, role: WheelZoomSettings.Role, cancelled: () -> Unit,
+        refused: (WheelZoomSettings.Role) -> Unit, done: (WheelKey) -> Unit): Boolean {
+        if (role !in roles || inCall(context)) return false
+        cancelLearning()
+        if (!initialize(context)) return false
+        learning = Learning(role, cancelled, refused, done)
+        if (!register()) { learning = null; return false }
+        main.postDelayed(timeout, WheelKeyService.LEARNING_TIMEOUT_MILLIS)
+        XingruiRuntimeStatus.record("方控学习", "等待真实按键：$role")
+        return true
+    }
+    fun cancelLearning() {
+        val pending = synchronized(this) { learning.also { learning = null } }
+        main.removeCallbacks(timeout)
+        if (pending != null) { pending.cancel(); register() }
+    }
+    private fun initialize(context: Context): Boolean {
+        app = context.applicationContext
+        if (input != null) return true
+        return runCatching {
+            val cls = Class.forName("com.ecarx.xui.adaptapi.input.Input")
+            val cb = Class.forName("com.ecarx.xui.adaptapi.input.IKeyCallback")
+            contract = cls; callbackClass = cb
+            input = checkNotNull(cls.getMethod("create", Context::class.java).invoke(null, app))
+            callback = Proxy.newProxyInstance(cb.classLoader, arrayOf(cb)) { proxy, method, args ->
+                when (method.name) {
+                    "onKeyPressed" -> (args?.firstOrNull() as? Int)?.let(::down) ?: false
+                    "onKeyReleased" -> (args?.firstOrNull() as? Int)?.let { code -> synchronized(this) {
+                        learningReleases.remove(code) || presses.up(code)
+                    } } ?: false
+                    "hashCode" -> System.identityHashCode(proxy)
+                    "equals" -> proxy === args?.firstOrNull()
+                    "toString" -> "XingruiInputCallback"
+                    else -> null
                 }
-                // Only E02-confirmed 305 plus standard Android media keys. Never guess vendor codes.
-                val codes = intArrayOf(305, KeyEvent.KEYCODE_MEDIA_NEXT, KeyEvent.KEYCODE_MEDIA_PREVIOUS,
-                    KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE)
-                val result = cls.getMethod("requestKeysInterception", IntArray::class.java, cb)
-                    .invoke(input, codes, callback)
-                val detail = (result as? IntArray)?.joinToString(",") ?: "null"
-                XingruiRuntimeStatus.record("方控", "已申请系统按键回调，返回=[$detail]；等待真实按键确认")
-            } catch (error: Throwable) {
-                val cause = error.cause ?: error
-                XingruiRuntimeStatus.record("方控", "接口不可用：${cause.javaClass.simpleName}: ${cause.message}")
             }
+            true
+        }.getOrElse {
+            XingruiRuntimeStatus.record("方控", "初始化失败：${it.cause ?: it}")
+            input = null; false
         }
-        private fun buttonFor(code: Int): Int? = when (code) {
-            305, KeyEvent.KEYCODE_MEDIA_NEXT -> CarPlayMediaButton.NEXT
-            KeyEvent.KEYCODE_MEDIA_PREVIOUS -> CarPlayMediaButton.PREVIOUS
-            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> CarPlayMediaButton.PLAY_PAUSE
-            KeyEvent.KEYCODE_MEDIA_PLAY -> CarPlayMediaButton.PLAY
-            KeyEvent.KEYCODE_MEDIA_PAUSE -> CarPlayMediaButton.PAUSE
-            else -> null
+    }
+    private fun candidates(): IntArray {
+        val context = app ?: return intArrayOf()
+        val codes = mutableSetOf(305, 87, 88, 85, 126, 127)
+        roles.forEach { role -> WheelZoomSettings.key(context, role)?.code?.let(codes::add) }
+        if (learning != null) {
+            // Discover named SDK constants, not guessed vendor numeric mappings.
+            runCatching { Class.forName("com.ecarx.xui.adaptapi.input.KeyCode").fields.forEach { field ->
+                if (field.type == Int::class.javaPrimitiveType && Modifier.isStatic(field.modifiers) &&
+                    listOf("MEDIA", "SEEK", "PLAY", "PAUSE", "NEXT", "PREVIOUS", "VOICE", "SPEECH", "VR_").any {
+                        field.name.contains(it, ignoreCase = true)
+                    }) codes.add(field.getInt(null))
+            } }.onFailure { XingruiRuntimeStatus.record("方控学习", "SDK 按键常量读取失败：${it.cause ?: it}") }
+            codes.add(KeyEvent.KEYCODE_VOICE_ASSIST)
         }
-        fun close() {
-            closed = true
-            runCatching {
-                if (input != null && callback != null) contract?.getMethod("abandonKeysInterception", callbackClass!!)
-                    ?.invoke(input, callback)
-            }.onFailure { XingruiRuntimeStatus.record("方控", "释放回调失败：${it.cause?.message ?: it.message}") }
-            presses.clear()
-            callback = null
-            input = null
+        // Volume, home, power and phone call controls remain with the vehicle.
+        codes.removeAll(setOf(0, 3, 4, 5, 6, 24, 25, 26, 164, 301, 302))
+        return codes.sorted().toIntArray()
+    }
+    private fun register(): Boolean {
+        if (input == null || callback == null) return false
+        return runCatching {
+            contract!!.getMethod("abandonKeysInterception", callbackClass!!).invoke(input, callback)
+            val codes = if (controller != null || learning != null) candidates() else intArrayOf()
+            if (codes.isNotEmpty()) {
+                val result = contract!!.getMethod("requestKeysInterception", IntArray::class.java, callbackClass!!)
+                    .invoke(input, codes, callback)
+                XingruiRuntimeStatus.record("方控", "请求=${codes.joinToString()} 返回=${(result as? IntArray)?.joinToString()}; 等待实际回调")
+            }
+            true
+        }.getOrElse { XingruiRuntimeStatus.record("方控", "注册失败：${it.cause ?: it}"); false }
+    }
+    @Synchronized private fun down(code: Int): Boolean {
+        if (code in learningReleases) return true
+        val context = app ?: return false
+        if (inCall(context)) return false
+        val pending = learning
+        if (pending != null) {
+            learning = null
+            learningReleases.add(code)
+            main.removeCallbacks(timeout)
+            main.post {
+                val key = WheelKey(code, 0, "ecarx-sdk")
+                val conflict = roles.firstOrNull { it != pending.role &&
+                    (it != WheelZoomSettings.Role.SIRI || WheelZoomSettings.siriKey(context)) &&
+                    WheelZoomSettings.key(context, it)?.code == code }
+                if (conflict != null) pending.refused(conflict) else {
+                    if (pending.role == WheelZoomSettings.Role.SIRI) WheelZoomSettings.setSiriKey(context, true)
+                    WheelZoomSettings.assign(context, pending.role, key)
+                    XingruiRuntimeStatus.record("方控学习", "已保存 ${pending.role}=$code")
+                    pending.done(key)
+                }
+                register()
+            }
+            return true
+        }
+        return presses.down(code) send@ {
+            val active = controller ?: return@send false
+            val role = roles.firstOrNull { (it != WheelZoomSettings.Role.SIRI || WheelZoomSettings.siriKey(context)) &&
+                WheelZoomSettings.key(context, it)?.code == code }
+            val button = when (role) {
+                WheelZoomSettings.Role.MEDIA_NEXT -> CarPlayMediaButton.NEXT
+                WheelZoomSettings.Role.MEDIA_PREVIOUS -> CarPlayMediaButton.PREVIOUS
+                WheelZoomSettings.Role.MEDIA_PLAY_PAUSE -> CarPlayMediaButton.PLAY_PAUSE
+                else -> when (code) { 305, 87 -> CarPlayMediaButton.NEXT; 88 -> CarPlayMediaButton.PREVIOUS
+                    85 -> CarPlayMediaButton.PLAY_PAUSE; 126 -> CarPlayMediaButton.PLAY; 127 -> CarPlayMediaButton.PAUSE; else -> null }
+            }
+            val sent = runCatching { if (role == WheelZoomSettings.Role.SIRI) active.requestSiri()
+                else button != null && active.sendMediaButton(button) }.getOrDefault(false)
+            XingruiRuntimeStatus.record("方控", "收到按键=$code role=$role CarPlay发送=$sent")
+            sent
         }
     }
 }

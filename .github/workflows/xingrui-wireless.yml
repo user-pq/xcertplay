@@ -82,6 +82,7 @@ jobs:
           python3 .ci/xingrui/apply_xingrui_runtime_patch.py "${RUNNER_TEMP}/DiPlay"
           python3 .ci/xingrui/apply_xingrui_r3_patch.py "${RUNNER_TEMP}/DiPlay"
           python3 .ci/xingrui/apply_xingrui_r4_patch.py "${RUNNER_TEMP}/DiPlay"
+          python3 .ci/xingrui/apply_xingrui_r5_patch.py "${RUNNER_TEMP}/DiPlay"
 
       - name: Prepare optional standalone authentication
         shell: bash

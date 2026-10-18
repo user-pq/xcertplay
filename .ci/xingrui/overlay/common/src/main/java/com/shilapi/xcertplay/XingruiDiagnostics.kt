@@ -29,6 +29,33 @@ internal object XingruiDiagnostics {
                 }, REQUEST)
             }.setNegativeButton("关闭", null).show()
     }
+    @Suppress("DEPRECATION")
+    private fun permissionReport(app: android.content.Context): String {
+        val pm = app.packageManager
+        val names = listOf("android.permission.READ_LOGS", "android.permission.BLUETOOTH_PRIVILEGED",
+            "android.car.permission.CAR_VENDOR_EXTENSION", "android.car.permission.CAR_SPEED",
+            "android.car.permission.CAR_POWERTRAIN", "android.car.permission.CAR_ENGINE_DETAILED",
+            "android.cevt.dimsupportservice.permission.DIM_MESSAGING", "ecarx.oem.permission.OPENAPI_NAVI_PERMISSION")
+        fun fingerprint(pkg: String) = runCatching {
+            pm.getPackageInfo(pkg, android.content.pm.PackageManager.GET_SIGNATURES).signatures?.map { sig ->
+                java.security.MessageDigest.getInstance("SHA-256").digest(sig.toByteArray()).joinToString("") { "%02x".format(it) }
+            }.toString()
+        }.getOrElse { it.toString() }
+        return "uid=${android.os.Process.myUid()}\nappSigner=${fingerprint(app.packageName)}\nframeworkSigner=${fingerprint("android")}\n" +
+            names.joinToString("\n") { "$it=${pm.checkPermission(it, app.packageName) == android.content.pm.PackageManager.PERMISSION_GRANTED}" }
+    }
+    private fun filteredLogcat(app: android.content.Context): String {
+        val file = File.createTempFile("xingrui-logcat-", ".txt", app.cacheDir)
+        var process: Process? = null
+        return try {
+            process = ProcessBuilder("logcat", "-d", "-v", "threadtime", "-t", "3000",
+                "XingruiDIM:I", "XingruiRuntime:I", "XingruiVHAL:I", "XingruiAudioRoute:I",
+                "xcertplay-boot:I", "ECarXDimServiceImpl:I", "*:S").redirectErrorStream(true).redirectOutput(file).start()
+            if (!process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) { process.destroy(); "logcat timed out\n" + file.readText().takeLast(1024 * 1024) }
+            else file.readText().takeLast(1024 * 1024)
+        } catch (error: Exception) { "logcat unavailable: $error" }
+        finally { process?.destroy(); file.delete() }
+    }
     fun export(activity: Activity, uri: Uri) {
         val app = activity.applicationContext
         Toast.makeText(activity, "正在导出适配诊断…", Toast.LENGTH_SHORT).show()
@@ -49,8 +76,12 @@ internal object XingruiDiagnostics {
                     val info = app.packageManager.getPackageInfo(app.packageName, 0)
                     text("runtime-status.txt", "package=${app.packageName}\nversion=${info.versionName}\n" +
                         "api=${android.os.Build.VERSION.SDK_INT}\nmodel=${android.os.Build.MODEL}\n" + XingruiRuntimeStatus.report())
+                    text("runtime-history.txt", XingruiRuntimeStatus.journalText())
+                    text("permissions.txt", permissionReport(app))
+                    text("filtered-logcat.txt", filteredLogcat(app))
                     val contracts = listOf("com.ecarx.xui.adaptapi.input.Input",
-                        "com.ecarx.xui.adaptapi.input.IKeyCallback", "com.ecarx.xui.adaptapi.diminteraction.DimInteraction",
+                        "com.ecarx.xui.adaptapi.input.IKeyCallback", "com.ecarx.xui.adaptapi.input.KeyCode",
+                        "com.ecarx.xui.adaptapi.diminteraction.IDimMenuInteraction", "com.ecarx.xui.adaptapi.diminteraction.DimInteraction",
                         "com.ecarx.xui.adaptapi.diminteraction.INaviInteraction", "com.ecarx.xui.adaptapi.diminteraction.IPhoneCallInteraction")
                     text("sdk-contracts.txt", contracts.joinToString("\n\n") { name ->
                         runCatching {

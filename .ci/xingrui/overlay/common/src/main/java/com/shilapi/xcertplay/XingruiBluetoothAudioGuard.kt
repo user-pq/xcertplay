@@ -17,6 +17,10 @@ internal class XingruiBluetoothAudioGuard(private val context: Context) {
     private var address: String? = null
     private var pending = false
     private var closed = false
+    private var lastStatus: String? = null
+    private fun status(message: String) {
+        if (lastStatus != message) { lastStatus = message; XingruiRuntimeStatus.record("蓝牙媒体", message) }
+    }
     private var failures = mutableSetOf<String>()
     private val listener: BluetoothProfile.ServiceListener = object : BluetoothProfile.ServiceListener {
         override fun onServiceConnected(id: Int, proxy: BluetoothProfile) {
@@ -35,14 +39,19 @@ internal class XingruiBluetoothAudioGuard(private val context: Context) {
                 if (proxy == null && !pending) {
                     pending = adapter?.getProfileProxy(context.applicationContext, listener, A2DP_SINK) == true
                     Log.i(TAG, "A2DP sink proxy requested=$pending")
+                    status("A2DP 接收服务请求=$pending")
                 }
-                proxy?.connectedDevices?.filter { it.address.equals(address, true) }?.forEach { phone ->
+                val phones = proxy?.connectedDevices?.filter { it.address.equals(address, true) }
+                if (phones != null && phones.isEmpty()) status("所选 iPhone 的 A2DP 媒体通道已断开")
+                phones?.forEach { phone ->
                     val accepted = proxy.javaClass.getMethod("disconnect", BluetoothDevice::class.java)
                         .invoke(proxy, phone) == true
                     Log.i(TAG, "selected iPhone A2DP disconnect accepted=$accepted; verify next profile state")
+                    status("A2DP 断开请求=$accepted，等待状态确认")
                 }
             } catch (error: Exception) {
                 val cause = error.cause ?: error
+                status("断开失败：${cause.javaClass.simpleName}: ${cause.message}")
                 if (failures.add(cause.javaClass.name)) Log.w(TAG,
                     "A2DP release unavailable ${cause.javaClass.simpleName}: ${cause.message}", cause)
             }
@@ -51,7 +60,9 @@ internal class XingruiBluetoothAudioGuard(private val context: Context) {
     }
     fun begin(phoneAddress: String?, evidence: String) {
         handler.post {
-            if (closed || phoneAddress == null || address == phoneAddress) return@post
+            if (closed) return@post
+            if (phoneAddress == null) { status("无线已连接，但未取得所选 iPhone 蓝牙地址，未执行断开"); return@post }
+            if (address == phoneAddress) return@post
             address = phoneAddress
             Log.i(TAG, "$evidence; guarding selected iPhone A2DP; PCM output is verified separately")
             handler.post(check)
