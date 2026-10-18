@@ -48,12 +48,9 @@ def main():
     s=h.read_text(encoding='utf-8'); c=s.count('R.raw.placeholder_icon')
     if c<1: raise SystemExit('[FAIL] no placeholder OEM icon')
     h.write_text(s.replace('R.raw.placeholder_icon','R.raw.xingrui_oem_icon').replace('text = "完整 Car 设置"','text = "完整设置"'),encoding='utf-8'); print('[ok] CarPlay OEM icon refs',c)
-    old='''        section(content, "连接", R.drawable.ic_dp_connection) { card ->\n            card.addView(label("无线 CarPlay（固定）", 17, TEXT, true))\n            card.addView(label("本版本不提供 USB CarPlay、热点模式和认证后端切换。", 14, MUTED).apply { setPadding(0, dp(4), 0, dp(10)) })\n            toggle(card, "自动连接", "打开 DiPlay 后自动连接已配对 iPhone。",\n                DiPlayPreferences.autoConnect(this)) { DiPlayPreferences.saveAutoConnect(this, it) }\n            card.addView(button(chooseIphoneTitle(), false) { choosePhone() }, matchButton(10, 58))\n        }\n'''
-    new='''        section(content, "连接", R.drawable.ic_dp_connection) { card ->\n            choice(card, "连接方式", listOf("无线 CarPlay（推荐）", "有线 USB CarPlay"),\n                if (AirPlayPersistence.loadWirelessEnabled(this)) 0 else 1) { index ->\n                AirPlayPersistence.saveWirelessEnabled(this, index == 0)\n                markReconnectNeeded()\n            }\n            toggle(card, "自动连接", "打开 diplay 后自动连接已配对 iPhone。",\n                DiPlayPreferences.autoConnect(this)) { DiPlayPreferences.saveAutoConnect(this, it) }\n            card.addView(button(chooseIphoneTitle(), false) { choosePhone() }, matchButton(10, 58))\n        }\n'''
-    rep(a,old,new,'wired/wireless settings')
-    rep(a,'settingsPageTitle(content, "星瑞 E02 设置", "无线 CarPlay 专版 · 仅保留日常需要的设置")','settingsPageTitle(content, "星瑞 E02 设置", "无线 / 有线 CarPlay · 仅保留日常需要的设置")','settings subtitle')
-    old_audio='''        section(content, "音质", R.drawable.ic_dp_audio) { card ->\n            card.addView(label("无线音频缓冲越小延迟越低，越大越稳定。", 14, MUTED).apply { setPadding(0, 0, 0, dp(8)) })\n            musicBufferChoice(card, wireless = true)\n        }\n'''
-    new_audio='''        section(content, "音质", R.drawable.ic_dp_audio) { card ->\n            card.addView(label("音频缓冲越小延迟越低，越大越稳定。", 14, MUTED).apply { setPadding(0, 0, 0, dp(8)) })\n            musicBufferChoice(card, wireless = AirPlayPersistence.loadWirelessEnabled(this))\n        }\n'''
-    rep(a,old_audio,new_audio,'transport audio buffer')
-    print('Xingrui product patch applied.')
+    rep(a,'打开 DiPlay 后自动连接已配对 iPhone。','打开 diplay 后自动连接已配对 iPhone。','app name in wireless-only settings')
+    s=a.read_text(encoding='utf-8')
+    if '有线 USB CarPlay' in s or '无线 / 有线 CarPlay' in s:
+        raise SystemExit('[FAIL] wired CarPlay option leaked into Xingrui UI')
+    print('Xingrui product patch applied: wireless-only UI retained.')
 if __name__=='__main__': main()
