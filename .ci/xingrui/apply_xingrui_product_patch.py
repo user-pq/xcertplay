@@ -28,7 +28,7 @@ def png_icon(path: Path):
                 ((58,106),(72,106)),((120,106),(134,106)),((72,82),(120,82)),((56,136),(56,148)),((136,136),(136,148))]:
         line(*a,*b,white,3)
     line(57,116,73,116,cyan,4); line(119,116,135,116,cyan,4); line(78,126,114,126,white,2)
-    raw=b''.join(b'\x00'+bytes(v for p in row for v in p) for row in px)
+    raw=b''.join(b'\x00'+bytes(row) for row in px)
     def chunk(t,d): return struct.pack('>I',len(d))+t+d+struct.pack('>I',zlib.crc32(t+d)&0xffffffff)
     out=b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',w,h,8,6,0,0,0))+chunk(b'IDAT',zlib.compress(raw,9))+chunk(b'IEND',b'')
     path.parent.mkdir(parents=True,exist_ok=True); path.write_bytes(out); print('[ok] Xingrui OEM icon',len(out),'bytes')
