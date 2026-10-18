@@ -20,6 +20,7 @@ def main():
                 startupHotspotCancelled = false
                 if (enabled) {
                     if (!CarHotspotTethering.permitted(this)) {
+                        hotspotStartupResult = CarHotspotTethering.Result.PERMISSION_REQUIRED
                         startActivity(Intent(android.provider.Settings.ACTION_MANAGE_WRITE_SETTINGS,
                             android.net.Uri.parse("package:$packageName")))
                     } else startCarHotspotOnLaunch()
@@ -72,6 +73,7 @@ def main():
             report("XingruiAudioVerified audioType=${format.audioType} routeType=${route.type} head=$playbackHeadFrames")
         }
         val queuedFrames = playbackHeadFrames?.let { (totalWrittenFrames - it).coerceAtLeast(0L) }''')
+    replace(r/'mobile/build.gradle.kts', 'applicationIdSuffix = ".hudtest"', 'applicationIdSuffix = ".xingrui"')
     replace(r/'mobile/build.gradle.kts', 'versionNameSuffix = "-hud-test"', 'versionNameSuffix = "-xingrui-r2"')
     manifest=c.parents[3]/'AndroidManifest.xml'
     # c is .../common/src/main/java/com/shilapi/xcertplay; use explicit path.

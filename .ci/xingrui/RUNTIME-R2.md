@@ -17,6 +17,14 @@ Pinned upstream remains DiPlay 0.2.20 / 3c95c936859e8a9153f0040caf2337adddb9e3e4
 - USB button removed from home. Version label now includes xingrui-r2.
 - Stream 111/presentation/surface diagnostics added; repetitive display candidate logs throttled.
 
+## Installation / identity
+
+R2 uses com.shihab.diplay.xingrui. The earlier standalone signer private key was not
+available, so R2 is a separate app rather than requiring destructive uninstall of the
+working .hudtest baseline. Close the previous app before testing R2, and select the
+already-bonded iPhone once in R2. It does not delete old app preferences or Bluetooth bonds.
+A new private local test signer is retained separately for future updates.
+
 ## Instrument limitation
 
 Presentation + a Surface on DashboardMapDisplay is NOT proof of a physical dashboard mode
