@@ -81,6 +81,7 @@ jobs:
           python3 .ci/xingrui/apply_xingrui_wheel_learning_patch.py "${RUNNER_TEMP}/DiPlay"
           python3 .ci/xingrui/apply_xingrui_runtime_patch.py "${RUNNER_TEMP}/DiPlay"
           python3 .ci/xingrui/apply_xingrui_r3_patch.py "${RUNNER_TEMP}/DiPlay"
+          python3 .ci/xingrui/apply_xingrui_r4_patch.py "${RUNNER_TEMP}/DiPlay"
 
       - name: Prepare optional standalone authentication
         shell: bash
@@ -122,11 +123,9 @@ jobs:
             ./gradlew :mobile:assembleDebug --stacktrace
           fi
 
-      - name: Upstream verification suite
-        continue-on-error: true
+      - name: Verify Xingrui session and output state
         working-directory: ${{ runner.temp }}/DiPlay
-        run: |
-          ./gradlew :shared:testDebugUnitTest :common:testDebugUnitTest :home:testDebugUnitTest :mobile:lintDebug :home:lintDebug :maphost:lintDebug :mobile:assembleDebug :home:assembleDebug :maphost:assembleDebug --continue
+        run: ./gradlew :common:testDebugUnitTest --tests '*XingruiWheelPressesTest' --tests '*XingruiProjectionGateTest'
 
       - name: Collect APK and checksum
         shell: bash
@@ -158,3 +157,9 @@ jobs:
           path: out/*
           if-no-files-found: error
           retention-days: 7
+
+      - name: Upstream verification suite
+        continue-on-error: true
+        working-directory: ${{ runner.temp }}/DiPlay
+        run: |
+          ./gradlew :shared:testDebugUnitTest :common:testDebugUnitTest :home:testDebugUnitTest :mobile:lintDebug :home:lintDebug :maphost:lintDebug :mobile:assembleDebug :home:assembleDebug :maphost:assembleDebug --continue

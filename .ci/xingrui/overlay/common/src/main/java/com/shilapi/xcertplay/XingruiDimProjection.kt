@@ -18,6 +18,7 @@ internal class XingruiDimProjection(context: Context, private val displayId: Int
     private var watcher: Any? = null
     private var connected = false
     private var dispatched = false
+    private val gate = XingruiProjectionGate()
 
     fun start() { handler.post {
         if (closed || dim != null) return@post
@@ -35,6 +36,8 @@ internal class XingruiDimProjection(context: Context, private val displayId: Int
                     "onConnected" -> { handler.post { onConnected() }; null }
                     "onDisConnected" -> { handler.post {
                         connected = false
+                        gate.connection(false)
+                        XingruiRuntimeStatus.record("仪表", "DIM 服务已断开")
                         Log.w(TAG, "DIM service disconnected; waiting for SDK reconnect")
                     }; null }
                     "hashCode" -> System.identityHashCode(proxy)
@@ -49,14 +52,28 @@ internal class XingruiDimProjection(context: Context, private val displayId: Int
             handler.postDelayed({
                 if (!closed && !connected) Log.w(TAG, "DIM connection not ready after 15s; no projection write sent")
             }, 15000L)
-        } catch (error: Exception) { Log.w(TAG, "DIM initialization failed", error.cause ?: error) }
+        } catch (error: Exception) {
+            Log.w(TAG, "DIM initialization failed", error.cause ?: error)
+            XingruiRuntimeStatus.record("仪表", "DIM 初始化失败：${error.cause?.message ?: error.message}")
+        }
     } }
 
     private fun onConnected() {
         if (closed) return
         connected = true
         Log.i(TAG, "DIM service connected")
-        if (!AirPlayPersistence.loadClusterMapEnabled(app)) return
+        XingruiRuntimeStatus.record("仪表", "DIM 已连接，等待仪表视频首帧")
+        gate.connection(true)?.let(::dispatch)
+    }
+
+    fun videoReady(ready: Boolean) { handler.post {
+        if (closed) return@post
+        XingruiRuntimeStatus.record("仪表视频", if (ready) "首帧已提交到 Display $displayId" else "视频流已停止")
+        gate.video(ready && AirPlayPersistence.loadClusterMapEnabled(app))?.let(::dispatch)
+    } }
+
+    private fun dispatch(show: Boolean) {
+        if (!connected || (show && (closed || !AirPlayPersistence.loadClusterMapEnabled(app)))) return
         try {
             // The first argument is APP_TYPE, NOT a display ID. Retain the reference app's
             // APP_TYPE_AMAP contract (1), resolving the named constant when the firmware exposes it.
@@ -64,10 +81,11 @@ internal class XingruiDimProjection(context: Context, private val displayId: Int
             val appType = runCatching { cls.getField("APP_TYPE_AMAP").getInt(null) }.getOrDefault(1)
             cls.getMethod("setPresentationToDimSwitch", Int::class.javaPrimitiveType,
                 String::class.java, String::class.java, Boolean::class.javaPrimitiveType)
-                .invoke(dim, appType, "", "", true)
-            dispatched = true
+                .invoke(dim, appType, "", "", show)
+            dispatched = show
             val option = runCatching { cls.getMethod("getShowPresentationOption").invoke(dim) }.getOrNull()
-            Log.i(TAG, "DIM projection dispatched appType=$appType option=$option; physical visibility unconfirmed")
+            Log.i(TAG, "DIM projection dispatched enabled=$show appType=$appType option=$option; physical visibility unconfirmed")
+            XingruiRuntimeStatus.record("仪表", "切换请求已发送 enabled=$show option=$option；实屏结果待确认")
         } catch (error: Exception) { Log.w(TAG, "DIM projection failed", error.cause ?: error) }
     }
 
@@ -77,6 +95,7 @@ internal class XingruiDimProjection(context: Context, private val displayId: Int
         handler.post {
             val instance = dim
             if (instance != null) {
+                gate.close()
                 if (dispatched && connected) runCatching {
                     val cls = checkNotNull(contract)
                     val appType = runCatching { cls.getField("APP_TYPE_AMAP").getInt(null) }.getOrDefault(1)
