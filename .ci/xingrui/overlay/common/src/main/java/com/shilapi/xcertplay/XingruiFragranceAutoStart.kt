@@ -51,55 +51,57 @@ object XingruiFragranceAutoStart {
         }
     }
 
-    private fun ensureOn(context: Context, attempt: Int): Result = try {
-        val carClass = loadOpenApiClass(context, CAR_CLASS)
-        val car = carClass.getMethod("create", Context::class.java).invoke(null, context)
-            ?: error("Car.create returned null")
-        val carFunction = car.javaClass.getMethod("getICarFunction").invoke(car)
-            ?: error("getICarFunction returned null")
-        val api = runCatching {
-            Class.forName(CAR_FUNCTION_CLASS, true, carClass.classLoader)
-        }.getOrElse {
-            loadOpenApiClass(context, CAR_FUNCTION_CLASS)
-        }
-        val intType = Int::class.javaPrimitiveType ?: error("primitive int type unavailable")
-        val getValue = api.getMethod("getFunctionValue", intType, intType)
-        val setValue = api.getMethod("setFunctionValue", intType, intType, intType)
+    private fun ensureOn(context: Context, attempt: Int): Result {
+        try {
+            val carClass = loadOpenApiClass(context, CAR_CLASS)
+            val car = carClass.getMethod("create", Context::class.java).invoke(null, context)
+                ?: error("Car.create returned null")
+            val carFunction = car.javaClass.getMethod("getICarFunction").invoke(car)
+                ?: error("getICarFunction returned null")
+            val api = runCatching {
+                Class.forName(CAR_FUNCTION_CLASS, true, carClass.classLoader)
+            }.getOrElse {
+                loadOpenApiClass(context, CAR_FUNCTION_CLASS)
+            }
+            val intType = Int::class.javaPrimitiveType ?: error("primitive int type unavailable")
+            val getValue = api.getMethod("getFunctionValue", intType, intType)
+            val setValue = api.getMethod("setFunctionValue", intType, intType, intType)
 
-        val before = (getValue.invoke(
-            carFunction,
-            FUNCTION_FRAGRANCE_SWITCH,
-            ZONE_GLOBAL,
-        ) as Number).toInt()
-        if (before == VALUE_ON) {
-            Log.i(TAG, "auto-start attempt=$attempt: fragrance already on")
-            return Result.ALREADY_ON
-        }
-
-        val accepted = setValue.invoke(
-            carFunction,
-            FUNCTION_FRAGRANCE_SWITCH,
-            ZONE_GLOBAL,
-            VALUE_ON,
-        ) as? Boolean ?: false
-        if (!accepted) {
-            Log.w(TAG, "auto-start attempt=$attempt: CarFunction rejected fragrance on request; before=$before")
-            return Result.RETRY
-        }
-
-        val after = runCatching {
-            (getValue.invoke(
+            val before = (getValue.invoke(
                 carFunction,
                 FUNCTION_FRAGRANCE_SWITCH,
                 ZONE_GLOBAL,
             ) as Number).toInt()
-        }.getOrNull()
-        Log.i(TAG, "auto-start attempt=$attempt: request accepted; before=$before after=$after")
-        Result.ENABLED
-    } catch (error: Throwable) {
-        val root = generateSequence(error) { it.cause }.last()
-        Log.w(TAG, "auto-start attempt=$attempt failed: ${root.javaClass.simpleName}: ${root.message}")
-        Result.RETRY
+            if (before == VALUE_ON) {
+                Log.i(TAG, "auto-start attempt=$attempt: fragrance already on")
+                return Result.ALREADY_ON
+            }
+
+            val accepted = setValue.invoke(
+                carFunction,
+                FUNCTION_FRAGRANCE_SWITCH,
+                ZONE_GLOBAL,
+                VALUE_ON,
+            ) as? Boolean ?: false
+            if (!accepted) {
+                Log.w(TAG, "auto-start attempt=$attempt: CarFunction rejected fragrance on request; before=$before")
+                return Result.RETRY
+            }
+
+            val after = runCatching {
+                (getValue.invoke(
+                    carFunction,
+                    FUNCTION_FRAGRANCE_SWITCH,
+                    ZONE_GLOBAL,
+                ) as Number).toInt()
+            }.getOrNull()
+            Log.i(TAG, "auto-start attempt=$attempt: request accepted; before=$before after=$after")
+            return Result.ENABLED
+        } catch (error: Throwable) {
+            val root = generateSequence(error) { it.cause }.last()
+            Log.w(TAG, "auto-start attempt=$attempt failed: ${root.javaClass.simpleName}: ${root.message}")
+            return Result.RETRY
+        }
     }
 
     private fun loadOpenApiClass(context: Context, className: String): Class<*> =
