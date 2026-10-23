@@ -46,7 +46,8 @@ class XingruiDimContractTest {
     }
     @Test fun readExceptionDoesNotConfirmEvenIfSwitchWasSet() {
         sdk.readFails = true; enable(); clock.advance(10000)
-        assertEquals(4, sdk.requests.size); assertFalse(messages.any { it.contains("软件判定=CONFIRMED") })
+        assertEquals(1, sdk.requests.size); assertFalse(messages.any { it.contains("软件判定=CONFIRMED") })
+        assertTrue(messages.any { it.contains("软件判定=SENT_UNVERIFIED") })
     }
     @Test fun closeChecksInternalReleaseBeforeUnwatchAndDisconnect() {
         enable(); sdk.followsRequest = false
@@ -107,5 +108,36 @@ class XingruiDimContractTest {
         sdk.followsRequest = true; session.video(true); clock.advance(10000)
         assertEquals(listOf(true, false, true), sdk.requests); assertEquals(0, releases)
         session.close(); assertEquals(1, releases)
+    }
+    @Test fun unsupportedGetterDoesNotRepeatEitherWriteOrWaitForReleaseTimeout() {
+        sdk.readAbstract = true; enable(); clock.advance(10000)
+        assertEquals(listOf(true), sdk.requests)
+        assertEquals(1, sdk.events.count { it == "source:false:2" })
+        session.close()
+        assertEquals(listOf(true, false), sdk.requests); assertEquals(1, finishes)
+        assertEquals(false, releaseResult) // false means unconfirmed, not a failed write.
+        assertTrue(messages.any { it.contains("已发送但无法完整验证") })
+        clock.advance(20000); assertEquals(1, finishes); assertEquals(2, sdk.requests.size)
+    }
+    @Test fun aReadableMismatchStillRetriesWithAnUnsupportedGetter() {
+        sdk.readAbstract = true; sdk.followsRequest = false
+        enable(); clock.advance(10000)
+        assertEquals(4, sdk.requests.count { it }); assertEquals(0, finishes)
+        assertTrue(messages.any { it.contains("软件判定=GAVE_UP") })
+        session.close(); assertEquals(1, finishes)
+    }
+    @Test fun missingInternalFieldWithSuccessfulWriteAndGetterIsUnverifiedWithoutRetry() {
+        enable(); sdk.navi = XingruiFixtureNavi()
+        session.close()
+        assertEquals(listOf(true, false), sdk.requests); assertEquals(1, finishes)
+        assertEquals(false, releaseResult)
+        assertTrue(messages.any { it.contains("请求=false") && it.contains("软件判定=SENT_UNVERIFIED") })
+    }
+    @Test fun failedPowerWriteStillRetriesEvenWhenBothReadbackValuesMatch() {
+        (sdk.navi as XingruiFixtureLiveNavi).mPowerOperation!!.fail = true
+        enable(); clock.advance(10000)
+        assertEquals(4, sdk.requests.count { it })
+        assertTrue(messages.any { it.contains("调用失败") })
+        assertFalse(messages.any { it.contains("软件判定=CONFIRMED") })
     }
 }

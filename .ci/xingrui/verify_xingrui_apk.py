@@ -54,7 +54,8 @@ def verify(apk: Path, aapt2: str, package: str, version: str, code: int) -> None
             raise AssertionError("No native libraries")
         dex = b"".join(archive.read(name) for name in names if re.fullmatch(r"classes\d*\.dex", name))
         for marker in (b"XingruiDimSession", b"XingruiWheelSession", b"XingruiSdkContract", b"XingruiClusterGuard",
-                       b"XingruiExitCoordinator", b"XingruiLegacyNavigationRecovery"):
+                       b"XingruiExitCoordinator", b"XingruiLegacyNavigationRecovery",
+                       b"SENT_UNVERIFIED", b"xingruiWindowSnapshot", b"display-state.txt"):
             if marker not in dex:
                 raise AssertionError(f"Missing production code: {marker.decode()}")
         if b"XingruiFixture" in dex or b"XingruiManualScheduler" in dex:

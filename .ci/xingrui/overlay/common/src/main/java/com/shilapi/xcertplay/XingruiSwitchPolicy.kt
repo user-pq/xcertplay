@@ -1,6 +1,6 @@
 package com.shilapi.xcertplay
 
-internal enum class XingruiSwitchVerdict { CONFIRMED, RETRY, GAVE_UP }
+internal enum class XingruiSwitchVerdict { CONFIRMED, SENT_UNVERIFIED, RETRY, GAVE_UP }
 
 /**
  * Decides, from SDK read-back values only, whether a cluster switch request took effect in software.
@@ -13,14 +13,16 @@ internal object XingruiSwitchPolicy {
     /**
      * @param switchState getPresentationToDimSwitch() read-back, null when unavailable
      * @param internalProjection navigation service isScreenProjection, null when unknown
-     * @param failed the request, the power-source call or the read-back threw
+     * @param failed a write request or power-source call threw; read-back unavailability is separate
      * @param retriesUsed retries already spent for this request
      */
     fun verdict(requested: Boolean, switchState: Any?, internalProjection: Any?, failed: Boolean, retriesUsed: Int): XingruiSwitchVerdict {
-        // Unknown internal state never establishes success. Release must match internally, too.
-        val matches = !failed && switchState == requested && internalProjection == requested
+        val mismatch = (switchState is Boolean && switchState != requested) ||
+            (internalProjection is Boolean && internalProjection != requested)
         return when {
-            matches -> XingruiSwitchVerdict.CONFIRMED
+            !failed && switchState == requested && internalProjection == requested -> XingruiSwitchVerdict.CONFIRMED
+            // Unknown is neither confirmation nor a failed write. Repeating a write cannot supply a missing getter.
+            !failed && !mismatch -> XingruiSwitchVerdict.SENT_UNVERIFIED
             retriesUsed < MAX_RETRIES -> XingruiSwitchVerdict.RETRY
             else -> XingruiSwitchVerdict.GAVE_UP
         }

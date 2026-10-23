@@ -19,7 +19,11 @@ interface XingruiFixtureConnect {
 }
 open class XingruiFixtureNavi
 class XingruiFixturePower(private val events: MutableList<String>) {
-    fun disableScreenProjection(blocked: Boolean, mode: Int) { events.add("source:$blocked:$mode") }
+    var fail = false
+    fun disableScreenProjection(blocked: Boolean, mode: Int) {
+        events.add("source:$blocked:$mode")
+        if (fail) throw SecurityException("power refused")
+    }
 }
 class XingruiFixtureLiveNavi(events: MutableList<String>) : XingruiFixtureNavi() {
     @JvmField var mPowerOperation: XingruiFixturePower? = XingruiFixturePower(events)
@@ -42,6 +46,9 @@ class XingruiFixtureDimImpl : XingruiFixtureDim(), XingruiFixtureConnect {
     var enabled = false
     var followsRequest = true
     var readFails = false
+    var readAbstract = false
+    var readMutatesInternal: Boolean? = null
+    var readAttempts = 0
     var closeFails = false
     val requests = mutableListOf<Boolean>()
     override fun registerConnectWatcher(watcher: XingruiFixtureWatcher) { events.add("watch"); this.watcher = watcher }
@@ -55,10 +62,25 @@ class XingruiFixtureDimImpl : XingruiFixtureDim(), XingruiFixtureConnect {
         if (followsRequest) (navi as? XingruiFixtureLiveNavi)?.isScreenProjection = show
     }
     override fun getPresentationToDimSwitch(): Boolean {
+        readAttempts++
+        readMutatesInternal?.let { (navi as? XingruiFixtureLiveNavi)?.isScreenProjection = it }
+        if (readAbstract) throw AbstractMethodError("getter not implemented on this firmware")
         if (readFails) throw SecurityException("read refused")
         events.add("read"); return enabled
     }
     override fun getNaviInteraction(): XingruiFixtureNavi? = navi
+}
+class XingruiFixtureDimWithoutGetter : XingruiFixtureConnect {
+    val navi = XingruiFixtureLiveNavi(mutableListOf())
+    fun setPresentationToDimSwitch(kind: Int, pkg: String, cls: String, show: Boolean) { navi.isScreenProjection = show }
+    fun getNaviInteraction(): XingruiFixtureNavi = navi
+    override fun registerConnectWatcher(watcher: XingruiFixtureWatcher) = Unit
+    override fun unregisterConnectWatcher() = Unit
+    override fun connect() = Unit
+    override fun disconnect() = Unit
+    companion object {
+        @JvmStatic fun create(context: XingruiFixtureContext): XingruiFixtureDimWithoutGetter = XingruiFixtureDimWithoutGetter()
+    }
 }
 class XingruiFixtureInput {
     var callback: XingruiFixtureKey? = null
@@ -149,7 +171,7 @@ class XingruiSdkContractTest {
         xingruiDimPort().watch({}, {})
         assertEquals(listOf("watch"), dim.events)
     }
-    @Test fun requestUsesAppTypeAndRealOwnerThenDisplaySourceParameters() {
+    @Test fun requestPreservesLegacyRawArgumentsAndActualOwnerWithoutAssumingTheirOemMeaning() {
         xingruiDimPort().request(true)
         assertEquals(listOf("request:0:owner.pkg:owner.Host:true", "source:false:2"), dim.events)
     }
@@ -163,9 +185,58 @@ class XingruiSdkContractTest {
         val state = xingruiDimPort().read()
         assertNull(state.internal); assertTrue(state.note.contains("unavailable"))
     }
-    @Test fun readFailureIsPropagatedNotTurnedIntoSuccess() {
+    @Test fun deniedGetterRetainsInternalStateWithoutBecomingConfirmation() {
         dim.readFails = true
-        assertNotNull(runCatching { xingruiDimPort().read() }.exceptionOrNull())
+        val state = xingruiDimPort().read()
+        assertNull(state.enabled); assertEquals(false, state.internal)
+        assertTrue(state.note.contains("SecurityException"))
+        assertEquals(XingruiSwitchVerdict.SENT_UNVERIFIED,
+            XingruiSwitchPolicy.verdict(false, state.enabled, state.internal, false, 0))
+    }
+    @Test fun wrappedAbstractGetterCannotEraseTheInternalValueReadBeforeIt() {
+        val navi = dim.navi as XingruiFixtureLiveNavi
+        navi.isScreenProjection = true
+        dim.readAbstract = true; dim.readMutatesInternal = false
+        val port = xingruiDimPort()
+        val state = port.read()
+        assertEquals(false, navi.isScreenProjection)
+        assertEquals(true, state.internal); assertNull(state.enabled)
+        assertTrue(state.note.contains("getter 不受支持")); assertTrue(state.note.contains("AbstractMethodError"))
+        assertEquals(false, port.read().internal); assertEquals(1, dim.readAttempts)
+    }
+    @Test fun anAbsentOptionalGetterDoesNotPreventFactoryOrWriteOrIndependentReadback() {
+        val load: (String) -> Class<*> = {
+            if (it == XingruiSdkContract.DIM) XingruiFixtureDimWithoutGetter::class.java else xingruiFixtureClass(it)
+        }
+        assertNull(XingruiSdkContract.dim(XingruiFixtureContext::class.java, load).enabled)
+        val port = XingruiReflectiveDim(XingruiFixtureContext(), XingruiFixtureContext::class.java,
+            "owner.pkg", "owner.Host", load)
+        port.request(true)
+        assertEquals(true, port.read().internal); assertNull(port.read().enabled)
+        assertTrue(port.read().note.contains("getter 不受支持"))
+    }
+    @Test fun requestDiagnosticsRecordIndependentBeforeAfterValuesClassesAndRawArguments() {
+        val lines = mutableListOf<String>()
+        val port = XingruiReflectiveDim(XingruiFixtureContext(), XingruiFixtureContext::class.java,
+            "owner.pkg", "owner.Host", ::xingruiFixtureClass, lines::add)
+        dim.readAbstract = true; port.request(true)
+        assertTrue(lines.first().contains("申请前")); assertTrue(lines.first().contains("internal=false"))
+        assertTrue(lines.last().contains("申请后")); assertTrue(lines.last().contains("internal=true"))
+        assertTrue(lines.any { it.contains("mPowerOperation actualClass=${XingruiFixturePower::class.java.name}") })
+        assertTrue(lines.any { it.contains("kind=0") && it.contains("powerMode=2") && it.contains("参数语义未证实") })
+        assertEquals(0, dim.readAttempts)
+        assertEquals(true, port.read().internal); assertEquals(1, dim.readAttempts)
+    }
+    @Test fun missingInternalStateDoesNotEraseAWorkingPublicGetter() {
+        dim.navi = XingruiFixtureNavi(); dim.enabled = true
+        val state = xingruiDimPort().read()
+        assertNull(state.internal); assertEquals(true, state.enabled)
+    }
+    @Test fun diagnosticCallbackFailureCannotBlockTheWrite() {
+        val port = XingruiReflectiveDim(XingruiFixtureContext(), XingruiFixtureContext::class.java,
+            "owner.pkg", "owner.Host", ::xingruiFixtureClass) { throw IllegalStateException("log destination") }
+        port.request(true)
+        assertEquals(listOf(true), dim.requests); assertTrue(dim.events.contains("source:false:2"))
     }
     @Test fun inputCallbackPreservesPressAndReleaseReturnValuesAndRawResult() {
         val port = xingruiInputPort(); input.result = null

@@ -18,7 +18,7 @@ internal object XingruiClusterProbe {
             .map { it to candidate(it) }
             .onEach { (display, c) ->
                 val line = "candidate id=${display.displayId} name=${display.name} ${c.width}x${c.height} " +
-                    "flags=${display.flags} valid=${display.isValid} score=${XingruiDisplayScorer.score(c)}"
+                    "flags=${display.flags} valid=${display.isValid} state=${display.state} score=${XingruiDisplayScorer.score(c)}"
                 val now = android.os.SystemClock.uptimeMillis()
                 val previous = lastReports[display.displayId]
                 if (previous == null || previous.first != line || now - previous.second >= 10_000L) {
@@ -38,7 +38,7 @@ internal object XingruiClusterProbe {
         val all = manager.displays.joinToString(" | ") { display ->
             val c = candidate(display)
             "${display.displayId}:${display.name} ${c.width}x${c.height} flags=${display.flags} " +
-                "valid=${display.isValid} score=${XingruiDisplayScorer.score(c)} likely=${XingruiDisplayScorer.isLikelyCluster(c)}"
+                "valid=${display.isValid} state=${display.state} score=${XingruiDisplayScorer.score(c)} likely=${XingruiDisplayScorer.isLikelyCluster(c)}"
         }
         val selected = find(context)?.let { "${it.displayId}:${it.name}" } ?: "none"
         return "allDisplays=$all\nselectedXingruiCluster=$selected"

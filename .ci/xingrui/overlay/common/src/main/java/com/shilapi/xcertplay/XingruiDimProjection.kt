@@ -19,7 +19,8 @@ internal class XingruiDimProjection(context: Context, private val displayId: Int
         if (closing || session != null) return@post
         try {
             XingruiClusterGuard.release(app, "新会话开始前恢复遗留状态")
-            val port = XingruiReflectiveDim(app, Context::class.java, app.packageName, CarPlayHostActivity::class.java.name)
+            val port = XingruiReflectiveDim(app, Context::class.java, app.packageName, CarPlayHostActivity::class.java.name,
+                report = { XingruiRuntimeStatus.record("DIM调用", it) })
             session = XingruiDimSession(port, XingruiScheduler { delay, task -> handler.postDelayed({ task() }, delay) },
                 allowed = { AirPlayPersistence.loadClusterMapEnabled(app) },
                 report = { XingruiRuntimeStatus.record("仪表", it) },

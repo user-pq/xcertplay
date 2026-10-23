@@ -49,8 +49,9 @@ internal object XingruiDiagnostics {
         var process: Process? = null
         return try {
             process = ProcessBuilder("logcat", "-d", "-v", "threadtime", "-t", "3000",
-                "XingruiDIM:I", "XingruiRuntime:I", "XingruiVHAL:I", "XingruiAudioRoute:I",
-                "xcertplay-boot:I", "ECarXDimServiceImpl:I", "*:S").redirectErrorStream(true).redirectOutput(file).start()
+                "XingruiDIM:I", "XingruiRuntime:I", "XingruiVHAL:I", "XingruiAudioRoute:I", "XingruiCluster:V",
+                "DiPlay-Cluster:V", "ClusterMapPresentation:V", "DimInteraction:V", "NaviInteraction:V", "PowerOperation:V",
+                "xcertplay-boot:I", "ECarXDimServiceImpl:V", "*:S").redirectErrorStream(true).redirectOutput(file).start()
             if (!process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) { process.destroy(); "logcat timed out\n" + file.readText().takeLast(1024 * 1024) }
             else file.readText().takeLast(1024 * 1024)
         } catch (error: Exception) { "logcat unavailable: $error" }
@@ -78,6 +79,7 @@ internal object XingruiDiagnostics {
                         "api=${android.os.Build.VERSION.SDK_INT}\nmodel=${android.os.Build.MODEL}\n" + XingruiRuntimeStatus.report())
                     text("runtime-history.txt", XingruiRuntimeStatus.journalText())
                     text("permissions.txt", permissionReport(app))
+                    text("display-state.txt", XingruiClusterProbe.report(app))
                     text("sdk-contract-check.txt", XingruiSdkContract.describe(android.content.Context::class.java))
                     text("filtered-logcat.txt", filteredLogcat(app))
                     val contracts = listOf("com.ecarx.xui.adaptapi.input.Input",

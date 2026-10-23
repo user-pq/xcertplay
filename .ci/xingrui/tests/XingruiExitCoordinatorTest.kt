@@ -94,4 +94,17 @@ class XingruiExitCoordinatorTest {
         display[0](true); clock.ready(); assertEquals(2, callbacks)
         assertEquals(1, display.size); assertEquals(1, results.size)
     }
+    @Test fun unsupportedGetterCompletesExitAsUnconfirmedWithoutAFalseTimeoutOrRepeatedWrite() {
+        val sdk = XingruiFixtureDimImpl(); XingruiFixtureDim.current = sdk; sdk.readAbstract = true
+        val done = XingruiReleaseCompletion()
+        val session = XingruiDimSession(xingruiDimPort(), clock, { true }, {}, { done.finish(it) })
+        session.start(); sdk.watcher!!.onConnected(); clock.ready(); session.video(true)
+        XingruiExitCoordinator(clock, listOf({ callback -> done.await(callback); session.close() }),
+            { it(true) }, { results.add(it) }).start()
+        clock.ready()
+        assertEquals(0L, clock.now)
+        assertEquals(listOf(XingruiExitResult(false, true, false)), results)
+        assertEquals(listOf(true, false), sdk.requests)
+        clock.advance(20000); assertEquals(1, results.size)
+    }
 }

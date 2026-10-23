@@ -50,12 +50,19 @@ internal class XingruiDimSession(private val port: XingruiDimPort, private val s
         var failed = false
         try {
             if (show) { leaseAttempted = true; claimNative() }
-            port.request(show); state = port.read()
+            port.request(show)
         }
         catch (error: Exception) { failed = true; report("请求=$show 调用失败：${error.cause ?: error}") }
+        try { state = port.read() }
+        catch (error: Exception) { state = XingruiDimState(null, null, "读回不可用：${error.cause ?: error}") }
         val verdict = XingruiSwitchPolicy.verdict(show, state.enabled, state.internal, failed, retries)
         report("请求=$show switch=${state.enabled} internal=${state.internal} ${state.note}；软件判定=$verdict；实屏待确认")
         when (verdict) {
+            XingruiSwitchVerdict.SENT_UNVERIFIED -> {
+                report("请求=$show 已发送但无法完整验证；未发现可读状态冲突，不因读回缺失重复写入；实屏待确认")
+                if (!show) releaseLease()
+                if (closing) finish()
+            }
             XingruiSwitchVerdict.RETRY -> scheduler.post(XingruiSwitchPolicy.delayMillis(retries + 1)) {
                 attempt(show, generation, retries + 1)
             }
@@ -83,6 +90,7 @@ internal class XingruiDimSession(private val port: XingruiDimPort, private val s
     private fun finish() {
         if (disposed) return
         disposed = true; epoch++
+        // This Boolean means release CONFIRMED, not that every false value is a failed request.
         var success = !enableAttempted || releaseConfirmed
         try { port.dispose() } catch (error: Exception) {
             success = false
