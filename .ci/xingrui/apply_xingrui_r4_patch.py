@@ -41,6 +41,14 @@ def main():
 
     override fun onCreate(savedInstanceState: Bundle?) {''')
     # Copy focused pure-JVM state tests, leaving upstream behavior assertions intact.
+    # The Wi-Fi tests mock every address/capability. A host interface supplies only a real name/index;
+    # isolated builders can legitimately expose only loopback. No vehicle networking code changes.
+    wifi_test=root/'common/src/test/java/com/shilapi/xcertplay/ExistingWifiManagerTest.kt'
+    replace(wifi_test, '    private val iface = NetworkInterface.getNetworkInterfaces().toList().first { !it.isLoopback }',
+        '''    private val iface = NetworkInterface.getNetworkInterfaces().toList().let { interfaces ->
+        interfaces.firstOrNull { !it.isLoopback } ?: interfaces.firstOrNull()
+            ?: error("Wi-Fi test requires an interface name and index")
+    }''')
     target=root/'common/src/test/java/com/shilapi/xcertplay'
     source=Path(__file__).parent/'tests'
     for f in source.glob('Xingrui*Test.kt'):
