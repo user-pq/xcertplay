@@ -24,6 +24,7 @@ def main() -> None:
     persistence = common / "AirPlayPersistence.kt"
     boot = common / "BootReceiver.kt"
     settings = common / "DiPlayActivity.kt"
+    manifest = repo / "common/src/main/AndroidManifest.xml"
 
     replace_once(
         persistence,
@@ -90,6 +91,14 @@ def main() -> None:
         val launch = Intent(context, DiPlayActivity::class.java).apply {
 ''',
         "trigger fragrance independently from DiPlay boot launch",
+    )
+
+    replace_once(
+        manifest,
+        '    <uses-permission android:name="android.car.permission.CAR_SPEED" />\n',
+        '    <uses-permission android:name="android.car.permission.CAR_VENDOR_EXTENSION" />\n'
+        '    <uses-permission android:name="android.car.permission.CAR_SPEED" />\n',
+        "declare vehicle vendor-extension permission",
     )
 
     replace_once(
