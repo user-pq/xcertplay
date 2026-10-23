@@ -49,3 +49,8 @@
 ## mediacenter
 "No Authorization to operate [mediacenter]" is also logged for the working reference app (uid 1000, with AppId/AppKey),
 so it is not what blocks the wheel (Input) or the cluster (DIM).
+
+## Validation recorded 2026-10-23
+- Local Kotlin 2.2.10 / JUnit 4.13.2: all 77 focused tests passed.
+- Detached log collector integration test and shell syntax check passed.
+- Full Android checks run in the dedicated build workflow; local Gradle bootstrap could not reach its distribution endpoint.
