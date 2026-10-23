@@ -22,6 +22,8 @@ def main():
         '''        shutdown(terminateProcess = true, reason = "settings exit application") { finishAndRemoveTask() }''')
     replace(host, '''        xingruiAudioGuard.stop()
         callPopupSessionReady = false''', '''        xingruiAudioGuard.stop()
+        resetSidePanel()
+        releaseSidePanelEffects()
         // onStop can already have queued an asynchronous release: the registry also tracks those.
         dismissClusterPresentation()
         val pending = XingruiDimProjection.pendingReleases()
@@ -53,6 +55,26 @@ def main():
         callPopupSessionReady = false''')
     replace(host, '            mainHandler.post { completion() }',
         '            mainHandler.post { xingruiShutdownCompletion.finish(true) }')
+    # Existing host tests must await the new barrier before asserting downstream codec teardown.
+    side_test = root / 'common/src/test/java/com/shilapi/xcertplay/SidePanelLifecycleTest.kt'
+    replace(side_test, '''        assertPanelStopped()
+        assertTrue((get("teardownExecutor") as ExecutorService).awaitTermination(5, TimeUnit.SECONDS))''', '''        assertPanelStopped()
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        val executor = get("teardownExecutor") as ExecutorService
+        while (!executor.isShutdown && System.nanoTime() < deadline) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.yield()
+        }
+        assertTrue("Release barrier must complete before host teardown", executor.isShutdown)
+        assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS))''')
+    video_test = root / 'common/src/test/java/com/shilapi/xcertplay/SmoothVideoHostLifecycleTest.kt'
+    replace(video_test, '''Function0::class.java).apply { isAccessible = true }.invoke(activity, false, reason, {})''', '''Function0::class.java).apply { isAccessible = true }.invoke(activity, false, reason, {})
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (getField("sink") != null && System.nanoTime() < deadline) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.yield()
+        }
+        assertNull("Release barrier must reach controller teardown", getField("sink"))''')
     replace(host, '''            if (terminateProcess) Process.killProcess(Process.myPid())''',
         '''            // Leave process lifetime to Android: never interrupt outstanding vendor-service cleanup.''')
     replace(host, '''    private fun ensureClusterPresentation() {

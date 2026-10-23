@@ -15,6 +15,7 @@ def verify(root):
     assert shutdown.index('dismissClusterPresentation()') < shutdown.index('XingruiDimProjection.pendingReleases()')
     assert 'XingruiExitCoordinator(' in shutdown and 'if (terminateProcess && !result.nativeRestored)' in shutdown
     assert 'teardownExecutor.execute' not in shutdown
+    assert shutdown.index('resetSidePanel()') < shutdown.index('XingruiExitCoordinator(')
     assert 'xingruiShutdownCompletion.await' in shutdown
     assert 'if (!shuttingDown.compareAndSet(false, true)) return' in shutdown
     assert 'mainHandler.post { xingruiShutdownCompletion.finish(true) }' in host
