@@ -53,4 +53,18 @@ so it is not what blocks the wheel (Input) or the cluster (DIM).
 ## Validation recorded 2026-10-23
 - Local Kotlin 2.2.10 / JUnit 4.13.2: all 77 focused tests passed.
 - Detached log collector integration test and shell syntax check passed.
-- Full Android checks run in the dedicated build workflow; local Gradle bootstrap could not reach its distribution endpoint.
+- GitHub displays a fork Actions usage suspension, so the final APK and required Android checks were built locally.
+- mobile/home/maphost lintDebug and assembleDebug all passed. shared: 1495 tests, zero failures, one skipped;
+  home: six tests, zero failures.
+- Full common suite: 1442 tests; all 159 historical failure names reproduced, plus 14 ExistingWifiManagerTest
+  failures caused by this isolated host exposing only loopback. The fixture uses only an interface name/index,
+  with all addresses and capabilities mocked, so it now allows an existing loopback interface as a fallback.
+- After that test-only portability fix, the targeted rerun passed all 91 tests (77 Xingrui + 14 existing Wi-Fi).
+  The whole common suite was not repeated after this fixture-only fix; the 159 historical failures remain unresolved.
+- Local Mockito tests use an explicit startup agent because dynamic self-attachment is unavailable here.
+- Final standalone: com.shihab.diplay.xingrui.platform, version 0.2.20-xingrui-r6-platform, code 44.
+  Android 9 signature verification, v2 verification for API 25–27, native alignment (16 libraries), APK CRC,
+  production code markers and both authentication assets all passed. The signing certificate matches R5.
+- APK SHA-256: 66ce5949014bf5b8a7ce560a3c3285255e9e75045a7429e9010ce5e928b3ff46.
+- On-car instrument visibility, vehicle-property permissions and all key/audio/startup behavior still require
+  a real vehicle test; build and mock-contract checks do not establish those outcomes.
