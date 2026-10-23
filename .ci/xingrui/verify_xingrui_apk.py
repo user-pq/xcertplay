@@ -14,7 +14,7 @@ def verify(apk: Path, aapt2: str, package: str, version: str, code: int) -> None
     for expected in (f"name='{package}'", f"versionName='{version}'", f"versionCode='{code}'"):
         if expected not in header:
             raise AssertionError(f"Wrong APK identity: expected {expected}")
-    minimum = re.search(r"sdkVersion:'(\d+)'", badging)
+    minimum = re.search(r"(?:minSdkVersion|sdkVersion):'(\d+)'", badging)
     if minimum is None or int(minimum[1]) > 28:
         raise AssertionError("APK does not declare Android 9 compatibility")
     manifest = subprocess.check_output([aapt2, "dump", "xmltree", "--file", "AndroidManifest.xml", str(apk)], text=True)
