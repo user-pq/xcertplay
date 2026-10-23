@@ -12,12 +12,14 @@ import android.util.Log
  *   ICarFunction.getFunctionValue(0x100B0100, 0)
  *   ICarFunction.setFunctionValue(0x100B0100, 0, 1)
  *
- * The factory HvacModule maps function value 1 to vehicle property 0x2E700120 value 2.  Keep the
+ * The factory HvacModule maps function value 1 to vehicle property 0x2E700120 value 2. Keep the
  * write at the CarFunction layer instead of writing the byte-array VHAL property directly.
  */
 object XingruiFragranceAutoStart {
     private const val TAG = "XingruiFragrance"
+    private const val OPEN_API_PACKAGE = "com.ecarx.sdk.openapi"
     private const val CAR_CLASS = "com.ecarx.xui.adaptapi.car.Car"
+    private const val CAR_FUNCTION_CLASS = "com.ecarx.xui.adaptapi.car.base.ICarFunction"
     private const val FUNCTION_FRAGRANCE_SWITCH = 0x100B0100
     private const val ZONE_GLOBAL = 0
     private const val VALUE_ON = 1
@@ -50,25 +52,19 @@ object XingruiFragranceAutoStart {
     }
 
     private fun ensureOn(context: Context, attempt: Int): Result = try {
-        val carClass = Class.forName(CAR_CLASS)
+        val carClass = loadOpenApiClass(context, CAR_CLASS)
         val car = carClass.getMethod("create", Context::class.java).invoke(null, context)
             ?: error("Car.create returned null")
         val carFunction = car.javaClass.getMethod("getICarFunction").invoke(car)
             ?: error("getICarFunction returned null")
-        val api = carFunction.javaClass.interfaces
-            .firstOrNull { it.name == "com.ecarx.xui.adaptapi.car.base.ICarFunction" }
-            ?: Class.forName("com.ecarx.xui.adaptapi.car.base.ICarFunction")
-        val getValue = api.getMethod(
-            "getFunctionValue",
-            Int::class.javaPrimitiveType,
-            Int::class.javaPrimitiveType,
-        )
-        val setValue = api.getMethod(
-            "setFunctionValue",
-            Int::class.javaPrimitiveType,
-            Int::class.javaPrimitiveType,
-            Int::class.javaPrimitiveType,
-        )
+        val api = runCatching {
+            Class.forName(CAR_FUNCTION_CLASS, true, carClass.classLoader)
+        }.getOrElse {
+            loadOpenApiClass(context, CAR_FUNCTION_CLASS)
+        }
+        val intType = Int::class.javaPrimitiveType ?: error("primitive int type unavailable")
+        val getValue = api.getMethod("getFunctionValue", intType, intType)
+        val setValue = api.getMethod("setFunctionValue", intType, intType, intType)
 
         val before = (getValue.invoke(
             carFunction,
@@ -101,9 +97,19 @@ object XingruiFragranceAutoStart {
         Log.i(TAG, "auto-start attempt=$attempt: request accepted; before=$before after=$after")
         Result.ENABLED
     } catch (error: Throwable) {
-        Log.w(TAG, "auto-start attempt=$attempt failed: ${error.javaClass.simpleName}: ${error.message}")
+        val root = generateSequence(error) { it.cause }.last()
+        Log.w(TAG, "auto-start attempt=$attempt failed: ${root.javaClass.simpleName}: ${root.message}")
         Result.RETRY
     }
+
+    private fun loadOpenApiClass(context: Context, className: String): Class<*> =
+        runCatching { Class.forName(className) }.getOrElse {
+            val sdkContext = context.createPackageContext(
+                OPEN_API_PACKAGE,
+                Context.CONTEXT_INCLUDE_CODE or Context.CONTEXT_IGNORE_SECURITY,
+            )
+            Class.forName(className, true, sdkContext.classLoader)
+        }
 
     private enum class Result {
         ALREADY_ON,
