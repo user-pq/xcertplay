@@ -3,6 +3,7 @@
 from pathlib import Path
 import sys
 from apply_xingrui_runtime_patch import replace
+from apply_xingrui_fragrance_patch import main as apply_fragrance_patch
 
 
 def main():
@@ -64,3 +65,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    apply_fragrance_patch()
