@@ -84,6 +84,8 @@ jobs:
           python3 .ci/xingrui/apply_xingrui_r4_patch.py "${RUNNER_TEMP}/DiPlay"
           python3 .ci/xingrui/apply_xingrui_r5_patch.py "${RUNNER_TEMP}/DiPlay"
           python3 .ci/xingrui/apply_xingrui_platform_patch.py "${RUNNER_TEMP}/DiPlay"
+          python3 .ci/xingrui/apply_xingrui_exit_patch.py "${RUNNER_TEMP}/DiPlay"
+          python3 .ci/xingrui/test_exit_contract.py "${RUNNER_TEMP}/DiPlay"
 
       - name: Prepare optional standalone authentication
         shell: bash
@@ -148,7 +150,7 @@ jobs:
           python3 .ci/xingrui/verify_xingrui_apk.py "${apk}" \
             --aapt2 "${ANDROID_HOME}/build-tools/36.0.0/aapt2" \
             --package com.shihab.diplay.xingrui.platform \
-            --version 0.2.20-xingrui-r6-platform --version-code 44
+            --version 0.2.20-xingrui-r6.1-platform --version-code 45
           "${ANDROID_HOME}/build-tools/36.0.0/apksigner" verify --min-sdk-version 28 --max-sdk-version 28 "${apk}"
           if [[ "${DIPLAY_STANDALONE}" == true ]]; then
             name='diplay-Xingrui-E02-v0.2.20-standalone-debug.apk'

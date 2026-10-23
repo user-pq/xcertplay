@@ -13,10 +13,11 @@ class XingruiDimContractTest {
     private var allowed = true
     private var claims = 0
     private var releases = 0
+    private var releaseResult: Boolean? = null
     @Before fun setup() {
         sdk = XingruiFixtureDimImpl(); XingruiFixtureDim.current = sdk
-        clock = XingruiManualScheduler(); finishes = 0; allowed = true; messages.clear(); claims = 0; releases = 0
-        session = XingruiDimSession(xingruiDimPort(), clock, { allowed }, messages::add, { finishes++ },
+        clock = XingruiManualScheduler(); finishes = 0; allowed = true; messages.clear(); claims = 0; releases = 0; releaseResult = null
+        session = XingruiDimSession(xingruiDimPort(), clock, { allowed }, messages::add, { finishes++; releaseResult = it },
             { claims++; sdk.events.add("claim-native") }, { releases++; sdk.events.add("restore-native") })
     }
     private fun connected() { sdk.watcher!!.onConnected(); clock.ready() }
@@ -56,6 +57,7 @@ class XingruiDimContractTest {
         assertEquals(listOf(true, false, false), sdk.requests)
         assertEquals(listOf("unwatch", "disconnect"), sdk.events.takeLast(2)); assertEquals(1, finishes)
         assertEquals(1, releases)
+        assertEquals(true, releaseResult)
     }
     @Test fun failedReleaseStillDisposesOnceAfterBoundedAttempts() {
         enable(); sdk.closeFails = true
@@ -63,6 +65,7 @@ class XingruiDimContractTest {
         assertEquals(4, sdk.requests.count { !it }); assertEquals(1, finishes)
         assertEquals(1, sdk.events.count { it == "disconnect" })
         assertTrue(messages.any { it.contains("仍无法确认") })
+        assertEquals(false, releaseResult)
     }
     @Test fun closeInvalidatesPendingEnableRetryAndLateCallbacks() {
         sdk.navi = null; enable(); val late = sdk.watcher!!
@@ -88,6 +91,7 @@ class XingruiDimContractTest {
         enable(); sdk.watcher!!.onDisConnected(); clock.ready(); session.close(); clock.advance(10000)
         assertEquals(listOf(true), sdk.requests); assertEquals(1, finishes)
         assertTrue(messages.any { it.contains("无法确认仪表释放") })
+        assertEquals(false, releaseResult)
     }
     @Test fun failedEnableAndLostConnectionBothRestoreTheNativeService() {
         sdk.navi = null; enable(); clock.advance(10000)

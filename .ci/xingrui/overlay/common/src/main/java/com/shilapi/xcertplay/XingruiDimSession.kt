@@ -2,7 +2,7 @@ package com.shilapi.xcertplay
 
 /** Production lifecycle; transitions run on the scheduler's owner thread. */
 internal class XingruiDimSession(private val port: XingruiDimPort, private val scheduler: XingruiScheduler,
-    private val allowed: () -> Boolean, private val report: (String) -> Unit, private val finished: () -> Unit,
+    private val allowed: () -> Boolean, private val report: (String) -> Unit, private val finished: (Boolean) -> Unit,
     private val claimNative: () -> Unit = {}, private val releaseNative: () -> Unit = {}) {
     private val gate = XingruiProjectionGate()
     private var connected = false
@@ -10,6 +10,7 @@ internal class XingruiDimSession(private val port: XingruiDimPort, private val s
     private var closing = false
     private var disposed = false
     private var enableAttempted = false
+    private var releaseConfirmed = false
     private var leaseAttempted = false
     private var epoch = 0
     fun start() {
@@ -44,7 +45,7 @@ internal class XingruiDimSession(private val port: XingruiDimPort, private val s
     private fun begin(show: Boolean) { epoch++; attempt(show, epoch, 0) }
     private fun attempt(show: Boolean, generation: Int, retries: Int) {
         if (disposed || generation != epoch || !connected || (show && (closing || !allowed()))) return
-        if (show) enableAttempted = true
+        if (show) { enableAttempted = true; releaseConfirmed = false }
         var state = XingruiDimState(null, null)
         var failed = false
         try {
@@ -64,7 +65,7 @@ internal class XingruiDimSession(private val port: XingruiDimPort, private val s
                 if (closing) finish()
             }
             XingruiSwitchVerdict.CONFIRMED -> {
-                if (!show) releaseLease()
+                if (!show) { releaseConfirmed = true; releaseLease() }
                 if (closing) finish()
             }
         }
@@ -82,8 +83,12 @@ internal class XingruiDimSession(private val port: XingruiDimPort, private val s
     private fun finish() {
         if (disposed) return
         disposed = true; epoch++
-        try { port.dispose() } catch (error: Exception) { report("释放 DIM 服务失败：${error.cause ?: error}") }
-        finally { releaseLease(); finished() }
+        var success = !enableAttempted || releaseConfirmed
+        try { port.dispose() } catch (error: Exception) {
+            success = false
+            report("释放 DIM 服务失败：${error.cause ?: error}")
+        }
+        finally { releaseLease(); finished(success) }
     }
     private fun releaseLease() {
         if (!leaseAttempted) return
