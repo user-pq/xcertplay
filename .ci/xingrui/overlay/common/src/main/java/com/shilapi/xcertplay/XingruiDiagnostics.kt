@@ -78,6 +78,7 @@ internal object XingruiDiagnostics {
                         "api=${android.os.Build.VERSION.SDK_INT}\nmodel=${android.os.Build.MODEL}\n" + XingruiRuntimeStatus.report())
                     text("runtime-history.txt", XingruiRuntimeStatus.journalText())
                     text("permissions.txt", permissionReport(app))
+                    text("sdk-contract-check.txt", XingruiSdkContract.describe(android.content.Context::class.java))
                     text("filtered-logcat.txt", filteredLogcat(app))
                     val contracts = listOf("com.ecarx.xui.adaptapi.input.Input",
                         "com.ecarx.xui.adaptapi.input.IKeyCallback", "com.ecarx.xui.adaptapi.input.KeyCode",

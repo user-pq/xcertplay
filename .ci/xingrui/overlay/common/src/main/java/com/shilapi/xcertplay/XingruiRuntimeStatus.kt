@@ -6,9 +6,18 @@ import java.util.Date
 import java.util.Locale
 
 internal object XingruiRuntimeStatus {
+    private val writer = java.util.concurrent.ThreadPoolExecutor(1, 1, 0L,
+        java.util.concurrent.TimeUnit.MILLISECONDS, java.util.concurrent.ArrayBlockingQueue<Runnable>(128),
+        java.util.concurrent.ThreadFactory { task -> Thread(task, "xingrui-events").apply { isDaemon = true } },
+        java.util.concurrent.ThreadPoolExecutor.DiscardOldestPolicy())
+    /** Never perform journal I/O on an ECARX key callback thread. Overflow drops logs, never actions. */
+    fun recordAsync(area: String, message: String) { writer.execute { record(area, message) } }
     private var journal: java.io.File? = null
     @Synchronized fun attach(context: android.content.Context) {
-        if (journal == null) journal = java.io.File(context.filesDir, "xingrui-runtime.log")
+        if (journal == null) {
+            journal = java.io.File(context.filesDir, "xingrui-runtime.log")
+            runCatching { XingruiClusterGuard.release(context, "应用启动后恢复遗留状态") }
+        }
     }
     @Synchronized fun journalText(): String = runCatching {
         val file = journal ?: return@runCatching "not initialized"

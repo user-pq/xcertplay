@@ -9,10 +9,10 @@ def main():
     c = root / 'common/src/main/java/com/shilapi/xcertplay'
     a = c / 'DiPlayActivity.kt'
     build = root / 'mobile/build.gradle.kts'
-    replace(build, 'versionNameSuffix = "-xingrui-r4"', 'versionNameSuffix = "-xingrui-r5"')
-    replace(build, 'versionCode = 41', 'versionCode = 42')
+    replace(build, 'versionNameSuffix = "-xingrui-r4"', 'versionNameSuffix = "-xingrui-r6"')
+    replace(build, 'versionCode = 41', 'versionCode = 43')
     manifest = root / 'mobile/src/main/AndroidManifest.xml'
-    replace(manifest, 'android:label="@string/app_name"', 'android:label="DiPlay 星瑞 R5"')
+    replace(manifest, 'android:label="@string/app_name"', 'android:label="DiPlay 星瑞 R6"')
     manifest = root / 'common/src/main/AndroidManifest.xml'
     replace(manifest, '    <application>', '''    <uses-permission android:name="android.permission.READ_LOGS" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.BLUETOOTH_PRIVILEGED" tools:ignore="ProtectedPermissions" />
@@ -22,7 +22,7 @@ def main():
     <application>''')
     replace(a, '        PhoneAudioRoute.attach(applicationContext)', '''        PhoneAudioRoute.attach(applicationContext)
         XingruiRuntimeStatus.attach(this)
-        XingruiRuntimeStatus.record("启动", "R5 Activity opened uid=${android.os.Process.myUid()}")''')
+        XingruiRuntimeStatus.record("启动", "R6 Activity opened uid=${android.os.Process.myUid()}")''')
     replace(a, '            val started = WheelKeyService.learn(role, cancelled, refused)', '''            cancelKeyLearning()
             val started = XingruiMediaCenter.learn(this, role, cancelled, refused) { key -> runOnUiThread {
                 assign.text = current(key)
@@ -54,6 +54,6 @@ def main():
     host = c / 'CarPlayHostActivity.kt'
     replace(host, '                if (message.startsWith("XingruiAudioVerified ")) runOnUiThread {', '''                if (message.startsWith("XingruiAudioVerified ")) runOnUiThread {
                     XingruiRuntimeStatus.record("音频输出", message)''')
-    print('Xingrui R5 source/learning patch applied')
+    print('Xingrui R6 source/learning/contracts patch applied')
 
 if __name__ == '__main__': main()

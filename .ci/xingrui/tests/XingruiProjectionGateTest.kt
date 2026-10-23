@@ -26,4 +26,26 @@ class XingruiProjectionGateTest {
         assertNull(gate.video(true))
         assertNull(gate.connection(true))
     }
+    // Car log 2026-10-18 23:00: stream restart, DIM connect, first frame, then a second first frame without a stop.
+    @Test fun secondFirstFrameWithoutStopDoesNotSwitchAgain() {
+        val gate = XingruiProjectionGate()
+        assertNull(gate.video(false))
+        assertNull(gate.connection(true))
+        assertEquals(true, gate.video(true))
+        assertNull(gate.video(true))
+    }
+    @Test fun streamStopReleasesAndNextFrameReasserts() {
+        val gate = XingruiProjectionGate()
+        gate.connection(true)
+        assertEquals(true, gate.video(true))
+        assertEquals(false, gate.video(false))
+        assertEquals(true, gate.video(true))
+    }
+    @Test fun disconnectWhileStoppedDoesNotReassertOnReconnect() {
+        val gate = XingruiProjectionGate()
+        gate.connection(true); gate.video(true)
+        assertNull(gate.connection(false))
+        assertNull(gate.video(false))
+        assertNull(gate.connection(true))
+    }
 }

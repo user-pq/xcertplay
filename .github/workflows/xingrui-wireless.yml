@@ -127,7 +127,16 @@ jobs:
 
       - name: Verify Xingrui session and output state
         working-directory: ${{ runner.temp }}/DiPlay
-        run: ./gradlew :common:testDebugUnitTest --tests '*XingruiWheelPressesTest' --tests '*XingruiProjectionGateTest'
+        run: ./gradlew :common:testDebugUnitTest --tests '*Xingrui*Test'
+
+      - name: Upload focused test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xingrui-contract-tests
+          path: ${{ runner.temp }}/DiPlay/common/build/test-results/testDebugUnitTest/**
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Collect APK and checksum
         shell: bash
@@ -136,6 +145,11 @@ jobs:
           mkdir -p out
           apk="$(find "${RUNNER_TEMP}/DiPlay/mobile/build/outputs/apk" -type f -name '*.apk' -print -quit)"
           test -n "${apk}"
+          python3 .ci/xingrui/verify_xingrui_apk.py "${apk}" \
+            --aapt2 "${ANDROID_HOME}/build-tools/36.0.0/aapt2" \
+            --package com.shihab.diplay.xingrui.platform \
+            --version 0.2.20-xingrui-r6-platform --version-code 44
+          "${ANDROID_HOME}/build-tools/36.0.0/apksigner" verify --min-sdk-version 28 --max-sdk-version 28 "${apk}"
           if [[ "${DIPLAY_STANDALONE}" == true ]]; then
             name='diplay-Xingrui-E02-v0.2.20-standalone-debug.apk'
             unzip -l "${apk}" | grep -q 'assets/offline-mfi/identity.pk8'
