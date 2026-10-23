@@ -33,7 +33,26 @@ It does not claim to fix physical cluster visibility without a new vehicle test.
 
 104 focused pure-JVM tests pass, including the production reflection adapter and real session/coordinator
 wiring with fixtures that model an unimplemented getter. Generated-source exit and observability contracts,
-and the detached log collector integration pass. Android build/APK results will be recorded after completion.
+and the detached log collector integration pass. All production overlays are byte-identical to the compiled
+source inputs. No production source edits followed verification.
+
+Final validation on 2026-10-23, implementation commit e4eb579991be98ed474ed90f436ccf4ee620332c:
+
+- Android execution: all 104 Xingrui tests pass. All 10 existing side-panel/video-host lifecycle tests pass.
+- Shared: 1495 tests, 0 failures, 1 skipped. Home: 6 tests, 0 failures.
+- Common: 1469 tests, 159 failures. All 159 failed test identities match the previously recorded baseline;
+  there are no added or removed failures. The complete required Gradle task run used --continue and returns
+  failure solely for :common:testDebugUnitTest. It must not be reported as an entirely successful build/check run.
+- Mobile/home/maphost debug APKs were produced; all three lint reports have 0 errors (20/7/1 warnings).
+- Final APK: diplay-Xingrui-E02-v0.2.20-r6.2-platform-standalone.apk
+- Package: com.shihab.diplay.xingrui.platform; version 0.2.20-xingrui-r6.2-platform; versionCode 46.
+- SHA-256: eafe62711f6b330072ef98797cec3536893b60482fab58d205bb3cd913331c82
+- The platform signer matches R6.1:
+  c8a2e9bccf597c2fb6dc66bee293fc13f2fc47ec77bc6b2b0d52c11f51192ab8.
+- Signature verification succeeds on API 28 and API 25-27. Native-library ZIP alignment checks (4K/16K),
+  CRC/manifest/production-DEX/fixture-exclusion checks pass. All 16 native libraries are present.
+- The complete MFi credential pair is byte-identical to the previous user-provided standalone build.
+  Credentials and signing keys are local-only inputs and are not committed.
 
 The previous R6.1 whole-common-suite baseline has 159 failures; they must not be described as a green suite.
 No new vehicle results have been supplied for this release.
