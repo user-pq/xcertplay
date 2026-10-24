@@ -28,7 +28,9 @@ internal class XingruiDimProjection(context: Context, private val displayId: Int
             val port = XingruiReflectiveDim(app, Context::class.java, app.packageName, CarPlayHostActivity::class.java.name,
                 report = { XingruiRuntimeStatus.record("DIM调用", it) })
             session = XingruiDimSession(port, XingruiScheduler { delay, task -> handler.postDelayed({ task() }, delay) },
-                allowed = { AirPlayPersistence.loadClusterMapEnabled(app) },
+                // Xingrui's physical DashboardMapDisplay is auto-enabled by the host even when the
+                // legacy map preference is off. DIM authorization must follow that same decision.
+                allowed = { AirPlayPersistence.loadClusterMapEnabled(app) || XingruiClusterProbe.find(app) != null },
                 report = { XingruiRuntimeStatus.record("仪表", it) },
                 finished = { finish(it) },
                 claimNative = { XingruiClusterGuard.claim(app) },
