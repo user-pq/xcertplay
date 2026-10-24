@@ -10,6 +10,12 @@ def main():
     root = Path(sys.argv[1])
     source = root / 'common/src/main/java/com/shilapi/xcertplay'
     presentation = source / 'ClusterMapPresentation.kt'
+    # The Xingrui host auto-enables a real DashboardMapDisplay even when the legacy map preference is off.
+    # DIM ownership must be created under the same physical-display decision or stream 111 can render with
+    # no corresponding presentation switch request.
+    replace(presentation,
+        '        if (XingruiClusterProbe.isCandidate(display) && AirPlayPersistence.loadClusterMapEnabled(context)) {',
+        '        if (XingruiClusterProbe.isCandidate(display)) {')
     replace(presentation, '''    override fun onStart() {
         super.onStart()''', '''    override fun onStart() {
         super.onStart()
