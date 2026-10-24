@@ -124,11 +124,7 @@ jobs:
         working-directory: ${{ runner.temp }}/DiPlay
         run: |
           set -euo pipefail
-          if [[ "${DIPLAY_STANDALONE}" == true ]]; then
-            ./gradlew :mobile:assembleDebug --stacktrace
-          else
-            ./gradlew :mobile:assembleDebug --stacktrace
-          fi
+          ./gradlew :mobile:assembleDebug --stacktrace
 
       - name: Verify Xingrui session and output state
         working-directory: ${{ runner.temp }}/DiPlay
@@ -153,14 +149,14 @@ jobs:
           python3 .ci/xingrui/verify_xingrui_apk.py "${apk}" \
             --aapt2 "${ANDROID_HOME}/build-tools/36.0.0/aapt2" \
             --package com.shihab.diplay.xingrui.platform \
-            --version 0.2.20-xingrui-r6.3-platform --version-code 47
+            --version 0.2.20-xingrui-r6.4-platform --version-code 48
           "${ANDROID_HOME}/build-tools/36.0.0/apksigner" verify --min-sdk-version 28 --max-sdk-version 28 "${apk}"
           if [[ "${DIPLAY_STANDALONE}" == true ]]; then
-            name='diplay-Xingrui-E02-v0.2.20-r6.3-standalone-debug.apk'
+            name='diplay-Xingrui-E02-v0.2.20-r6.4-standalone-debug.apk'
             unzip -l "${apk}" | grep -q 'assets/offline-mfi/identity.pk8'
             unzip -l "${apk}" | grep -q 'assets/offline-mfi/certificate.p7b'
           else
-            name='diplay-Xingrui-E02-v0.2.20-r6.3-debug.apk'
+            name='diplay-Xingrui-E02-v0.2.20-r6.4-debug.apk'
           fi
           cp "${apk}" "out/${name}"
           cp .ci/xingrui/collect_xingrui_test.sh .ci/xingrui/collect_xingrui_test.ps1 out/
