@@ -7,6 +7,12 @@ on:
     paths:
       - '.ci/xingrui/**'
       - '.github/workflows/xingrui-wireless.yml'
+  pull_request:
+    branches:
+      - build/xingrui-wireless-20261017
+    paths:
+      - '.ci/xingrui/**'
+      - '.github/workflows/xingrui-wireless.yml'
   workflow_dispatch:
 
 permissions:
