@@ -66,6 +66,8 @@ def main():
     build = root / 'mobile/build.gradle.kts'
     replace(build, 'versionCode = 45', 'versionCode = 47')
     replace(build, 'versionNameSuffix = "-xingrui-r6.1-platform"', 'versionNameSuffix = "-xingrui-r6.3-platform"')
+    mobile_manifest = root / 'mobile/src/main/AndroidManifest.xml'
+    replace(mobile_manifest, 'android:label="DiPlay 星瑞 R6"', 'android:label="DiPlay 星瑞 R6.3"')
     print('Xingrui R6.3 CarPlay Ultra cluster handoff and DIM/window diagnostics applied')
 
 
