@@ -17,12 +17,20 @@ def main():
     replace(sink, '    private val onAudioDiagnostic: (String) -> Unit = {},', '''    private val onAudioDiagnostic: (String) -> Unit = {},
     /** Decoder released its first buffer to a real output Surface; not proof of physical visibility. */
     private val onVideoFirstFrameReleased: (Int) -> Unit = {},''')
+    # An alternate CarPlay stream must not consume its one-shot first-frame event on the centre display
+    # while the real cluster Presentation is still being created. When cluster output is disabled the host
+    # explicitly maps SCREEN_TYPE_ALT to the main Surface, so removing this implicit fallback is safe.
+    replace(sink,
+        '            val decoder = newVideoDecoder(type, surfaces[type] ?: defaultSurface, startImmediately = false)',
+        '''            val targetSurface = surfaces[type] ?: defaultSurface.takeIf { type == MAIN_SCREEN_TYPE }
+            val decoder = newVideoDecoder(type, targetSurface, startImmediately = false)''')
     replace(sink, '        report = { videoDiagnosticHandlers[type]?.invoke(it) },', '''        report = {
             if (it == "first frame rendered" && statsLabel == null) onVideoFirstFrameReleased(type)
             videoDiagnosticHandlers[type]?.invoke(it)
         },''')
     replace(h, '            onMediaAudioChanged = CarPlayMediaKeys::onMediaAudioChanged,', '''            onVideoFirstFrameReleased = { type -> runOnUiThread {
                 if (controllerGeneration == restartGeneration && !shuttingDown.get() && type == SCREEN_TYPE_ALT) {
+                    Log.i("XingruiCluster", "stream=111 first frame on bound output presentation=${clusterPresentation != null} surfaceValid=${clusterSurface?.isValid}")
                     clusterPresentation?.xingruiVideoReady()
                 }
             } },
