@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""R6.2: preserve independent read-back and record real Presentation/window state."""
+"""R6.3: preserve independent read-back and harden CarPlay Ultra cluster handoff."""
 from pathlib import Path
 import sys
 from apply_xingrui_runtime_patch import replace
@@ -64,9 +64,9 @@ def main():
     replace(host, '''"SDK释放=${result.sdkReleased} 原车导航恢复=${result.nativeRestored} 超时=${result.timedOut}；实屏待确认"''',
         '''"SDK释放确认=${if (result.sdkReleased) "已确认" else "未获确认（含不可读状态）"} 原车导航恢复=${result.nativeRestored} 超时=${result.timedOut}；实屏待确认"''')
     build = root / 'mobile/build.gradle.kts'
-    replace(build, 'versionCode = 45', 'versionCode = 46')
-    replace(build, 'versionNameSuffix = "-xingrui-r6.1-platform"', 'versionNameSuffix = "-xingrui-r6.2-platform"')
-    print('Xingrui R6.2 independent read-back and DIM/window diagnostics applied; legacy raw arguments unchanged')
+    replace(build, 'versionCode = 45', 'versionCode = 47')
+    replace(build, 'versionNameSuffix = "-xingrui-r6.1-platform"', 'versionNameSuffix = "-xingrui-r6.3-platform"')
+    print('Xingrui R6.3 CarPlay Ultra cluster handoff and DIM/window diagnostics applied')
 
 
 if __name__ == '__main__':
