@@ -14,6 +14,12 @@ internal class XingruiDimProjection(context: Context, private val displayId: Int
     private val released = XingruiReleaseCompletion()
     @Volatile private var closing = false
     private var session: XingruiDimSession? = null
+    /**
+     * The alternate CarPlay decoder can release its first frame before the DIM worker has finished
+     * constructing its session. Keep the latest state so that one early callback cannot permanently
+     * suppress request(true).
+     */
+    private var latestVideoReady = false
     init { active.add(this) }
     fun start() { handler.post {
         if (closing || session != null) return@post
@@ -26,7 +32,11 @@ internal class XingruiDimProjection(context: Context, private val displayId: Int
                 report = { XingruiRuntimeStatus.record("仪表", it) },
                 finished = { finish(it) },
                 claimNative = { XingruiClusterGuard.claim(app) },
-                releaseNative = { XingruiClusterGuard.release(app) }).also { it.start() }
+                releaseNative = { XingruiClusterGuard.release(app) }).also {
+                    it.start()
+                    // Re-play a first-frame event that may have beaten session construction.
+                    it.video(latestVideoReady)
+                }
         } catch (error: Exception) {
             XingruiRuntimeStatus.record("仪表", "DIM 初始化失败：${error.cause ?: error}")
             finish(false)
@@ -34,6 +44,7 @@ internal class XingruiDimProjection(context: Context, private val displayId: Int
     } }
     fun videoReady(ready: Boolean) { handler.post {
         if (closing) return@post
+        latestVideoReady = ready
         XingruiRuntimeStatus.record("仪表视频", if (ready) "首帧已提交到 Display $displayId" else "视频流已停止")
         session?.video(ready)
     } }
