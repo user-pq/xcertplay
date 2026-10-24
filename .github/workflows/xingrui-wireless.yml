@@ -79,7 +79,7 @@ jobs:
           python3 .ci/xingrui/apply_xingrui_brand_patch.py "${RUNNER_TEMP}/DiPlay"
           python3 .ci/xingrui/apply_xingrui_product_patch.py "${RUNNER_TEMP}/DiPlay"
           python3 .ci/xingrui/apply_xingrui_wheel_learning_patch.py "${RUNNER_TEMP}/DiPlay"
-          python3 .ci/xingrui/apply_xingrui_runtime_patch.py "${RUNNER_TEMP}/DiPlay"
+          python3 .ci/xingrui_runtime_patch.py "${RUNNER_TEMP}/DiPlay"
           python3 .ci/xingrui/apply_xingrui_r3_patch.py "${RUNNER_TEMP}/DiPlay"
           python3 .ci/xingrui/apply_xingrui_r4_patch.py "${RUNNER_TEMP}/DiPlay"
           python3 .ci/xingrui/apply_xingrui_r5_patch.py "${RUNNER_TEMP}/DiPlay"
@@ -88,6 +88,7 @@ jobs:
           python3 .ci/xingrui/apply_xingrui_dim_observability_patch.py "${RUNNER_TEMP}/DiPlay"
           python3 .ci/xingrui/test_exit_contract.py "${RUNNER_TEMP}/DiPlay"
           python3 .ci/xingrui/test_dim_observability_contract.py "${RUNNER_TEMP}/DiPlay"
+          python3 .ci/xingrui/test_ultra_cluster_contract.py "${RUNNER_TEMP}/DiPlay"
 
       - name: Prepare optional standalone authentication
         shell: bash
@@ -152,14 +153,14 @@ jobs:
           python3 .ci/xingrui/verify_xingrui_apk.py "${apk}" \
             --aapt2 "${ANDROID_HOME}/build-tools/36.0.0/aapt2" \
             --package com.shihab.diplay.xingrui.platform \
-            --version 0.2.20-xingrui-r6.2-platform --version-code 46
+            --version 0.2.20-xingrui-r6.3-platform --version-code 47
           "${ANDROID_HOME}/build-tools/36.0.0/apksigner" verify --min-sdk-version 28 --max-sdk-version 28 "${apk}"
           if [[ "${DIPLAY_STANDALONE}" == true ]]; then
-            name='diplay-Xingrui-E02-v0.2.20-standalone-debug.apk'
+            name='diplay-Xingrui-E02-v0.2.20-r6.3-standalone-debug.apk'
             unzip -l "${apk}" | grep -q 'assets/offline-mfi/identity.pk8'
             unzip -l "${apk}" | grep -q 'assets/offline-mfi/certificate.p7b'
           else
-            name='diplay-Xingrui-E02-v0.2.20-debug.apk'
+            name='diplay-Xingrui-E02-v0.2.20-r6.3-debug.apk'
           fi
           cp "${apk}" "out/${name}"
           cp .ci/xingrui/collect_xingrui_test.sh .ci/xingrui/collect_xingrui_test.ps1 out/
