@@ -1,0 +1,48 @@
+name: Xingrui APK wheel bridge
+
+on:
+  push:
+    branches: [build/xingrui-apk-wheel-20261114]
+    paths:
+      - '.ci/xingrui/apk-wheel/**'
+      - '.github/workflows/xingrui-apk-wheel.yml'
+  pull_request:
+    branches: [build/xingrui-wireless-20261017]
+    paths:
+      - '.ci/xingrui/apk-wheel/**'
+      - '.github/workflows/xingrui-apk-wheel.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compile-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Compile production bridge separately from fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=.ci/xingrui/apk-wheel
+          mkdir -p out/bridge out/tests
+          find "$root/src" -name '*.java' -print > out/bridge-sources.txt
+          javac --release 8 -d out/bridge @out/bridge-sources.txt
+          jar --create --file out/xingrui-wheel-bridge.jar -C out/bridge .
+          find "$root/tests" -name '*.java' -print > out/test-sources.txt
+          javac --release 8 -cp out/bridge -d out/tests @out/test-sources.txt
+          java -cp out/bridge:out/tests WheelBridgeTest | tee out/bridge-tests.txt
+          python3 -m py_compile "$root/patch_apk.py"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xingrui-wheel-bridge-and-test-results
+          path: |
+            out/xingrui-wheel-bridge.jar
+            out/bridge-tests.txt
+          if-no-files-found: error
+          retention-days: 14
