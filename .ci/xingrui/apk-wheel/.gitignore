@@ -1,0 +1,7 @@
+local-signing/
+test-classes/
+__pycache__/
+*.apk
+*.pk8
+*.p12
+*.jks
