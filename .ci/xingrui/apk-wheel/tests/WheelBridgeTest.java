@@ -78,6 +78,13 @@ public class WheelBridgeTest {
         check(replacement.sent.equals(Arrays.asList(87)), "fallback forwarded only once");
         XingruiWheelBridge.stop(replacement);
         check(sdk.abandons == 1, "already abandoned callback not abandoned twice");
+        Host reconnect = new Host(); Input.current = new Input(); reconnect.defer = true;
+        XingruiWheelBridge.start(reconnect);
+        key(reconnect, 305, 0, 0);
+        reconnect.activeAirPlaySession = new Object();
+        for (Runnable task : reconnect.queue) task.run();
+        check(reconnect.sent.isEmpty(), "queued command must not cross into a replacement session");
+        XingruiWheelBridge.stop(reconnect);
         System.out.println("PASS " + checks + " production bridge assertions");
     }
 }

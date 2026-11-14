@@ -142,6 +142,9 @@ public final class XingruiWheelBridge {
             if (presses.contains(action)) return true;
             final Object owner = host.get();
             if (!eligible(owner)) return false;
+            final Object expectedSession;
+            try { expectedSession = field(owner, "activeAirPlaySession"); }
+            catch (Exception error) { return false; }
             presses.add(action);
             final int epoch = generation;
             try {
@@ -150,6 +153,7 @@ public final class XingruiWheelBridge {
                         synchronized (State.this) { if (closed || epoch != generation) return; }
                         if (!eligible(owner)) return;
                         try {
+                            if (field(owner, "activeAirPlaySession") != expectedSession) return;
                             Method forward = owner.getClass().getDeclaredMethod("requestMediaKey", int.class, String.class);
                             forward.setAccessible(true);
                             boolean sent = (Boolean) forward.invoke(owner, action == 200087 ? 87 : 88, "Xingrui-E02-" + source);
