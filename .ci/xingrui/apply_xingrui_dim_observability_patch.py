@@ -56,14 +56,15 @@ def main():
     host = source / 'CarPlayHostActivity.kt'
     # Existing installs can retain MAP in SharedPreferences. Migrate once so this test build actually
     # requests the iPhone's combined instrument-cluster UI rather than only the map URL.
-    replace(host, '''        val xingruiPrefs = getSharedPreferences("xingrui_runtime", Context.MODE_PRIVATE)
-        if (!xingruiPrefs.getBoolean("hotspot_v1", false)) {''', '''        val xingruiPrefs = getSharedPreferences("xingrui_runtime", Context.MODE_PRIVATE)
+    # Runtime preferences are initialized in DiPlayActivity, not CarPlayHostActivity.
+    # R3 inserts its boot migration between this declaration and hotspot_v1.
+    activity = source / 'DiPlayActivity.kt'
+    replace(activity, '''        val xingruiPrefs = getSharedPreferences("xingrui_runtime", Context.MODE_PRIVATE)''', '''        val xingruiPrefs = getSharedPreferences("xingrui_runtime", Context.MODE_PRIVATE)
         if (!xingruiPrefs.getBoolean("cluster_instruments_v1", false)) {
             AirPlayPersistence.saveClusterContent(this, CarPlayClusterDisplay.Content.INSTRUMENTS)
             xingruiPrefs.edit().putBoolean("cluster_instruments_v1", true).apply()
             Log.i("XingruiCluster", "cluster content migrated to INSTRUMENTS url=${CarPlayClusterDisplay.Content.INSTRUMENTS.url}")
-        }
-        if (!xingruiPrefs.getBoolean("hotspot_v1", false)) {''')
+        }''')
     replace(host, '''            presentation.show()
             clusterPresentation = presentation''', '''            presentation.show()
             presentation.xingruiWindowSnapshot("show-return")
@@ -97,7 +98,7 @@ def main():
     replace(build, 'versionCode = 45', 'versionCode = 48')
     replace(build, 'versionNameSuffix = "-xingrui-r6.1-platform"', 'versionNameSuffix = "-xingrui-r6.4-platform"')
     mobile_manifest = root / 'mobile/src/main/AndroidManifest.xml'
-    replace(mobile_manifest, 'android:label="DiPlay 星瑞 R6"', 'android:label="DiPlay 星瑞 R6.4"')
+    replace(mobile_manifest, 'android:label="DiPlay 星瑞 平台版"', 'android:label="DiPlay 星瑞 R6.4"')
     print('Xingrui R6.4 instrument-cluster INSTRUMENTS selection, altScreenURLs logging and DIM diagnostics applied')
 
 

@@ -9,6 +9,7 @@ def verify(root: Path) -> None:
     media = (root / "shared/src/main/java/com/shilapi/xcertplay/media/AndroidMediaSink.kt").read_text()
     airplay = (root / "shared/src/main/java/com/shilapi/xcertplay/airplay/AirPlaySession.kt").read_text()
     host = (source / "CarPlayHostActivity.kt").read_text()
+    activity = (source / "DiPlayActivity.kt").read_text()
     presentation = (source / "ClusterMapPresentation.kt").read_text()
     dim = (source / "XingruiDimProjection.kt").read_text()
     build = (root / "mobile/build.gradle.kts").read_text()
@@ -29,7 +30,7 @@ def verify(root: Path) -> None:
         'CarPlayClusterDisplay.Content.INSTRUMENTS',
         'cluster content migrated to INSTRUMENTS',
     ):
-        assert token in host, token
+        assert token in activity, token
 
     # Log exactly what the connected iPhone says it supports instead of inferring Ultra capability.
     assert 'airplay /info altScreenURLs=' in airplay

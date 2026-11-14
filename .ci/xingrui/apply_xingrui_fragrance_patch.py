@@ -63,32 +63,15 @@ def main() -> None:
 
     replace_once(
         boot,
-        '''        if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
-        // Starts the watcher for other apps' calls when that setting is on, even without opening DiPlay.
-        PhoneAudioRoute.attach(context)
-        val launchEnabled = AirPlayPersistence.loadAutoStartOnBoot(context)
-        StartupDiagnosticSnapshot.received(context, launchEnabled)
-        if (!launchEnabled) return
-
-        val launch = Intent(context, DiPlayActivity::class.java).apply {
-''',
-        '''        if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
-        // Starts the watcher for other apps' calls when that setting is on, even without opening DiPlay.
-        PhoneAudioRoute.attach(context)
-        val launchEnabled = AirPlayPersistence.loadAutoStartOnBoot(context)
-        StartupDiagnosticSnapshot.received(context, launchEnabled)
-
-        // Fragrance is independent of whether DiPlay itself auto-starts.
+        '        if (!launchEnabled) return\n',
+        '''        // Fragrance is independent of whether DiPlay itself auto-starts.
         if (AirPlayPersistence.loadFragranceAutoStart(context)) {
             val pendingResult = goAsync()
             XingruiFragranceAutoStart.ensureOnAsync(context.applicationContext) {
                 pendingResult.finish()
             }
         }
-
         if (!launchEnabled) return
-
-        val launch = Intent(context, DiPlayActivity::class.java).apply {
 ''',
         "trigger fragrance independently from DiPlay boot launch",
     )
